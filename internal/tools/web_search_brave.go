@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -35,14 +36,14 @@ func (p *braveSearchProvider) Search(ctx context.Context, params searchParams) (
 	q.Set("q", params.Query)
 	q.Set("count", fmt.Sprintf("%d", count))
 
-	if params.Country != "" {
-		q.Set("country", params.Country)
+	if country := normalizeBraveCountry(params.Country); country != "" {
+		q.Set("country", country)
 	}
 	if params.SearchLang != "" {
-		q.Set("search_lang", params.SearchLang)
+		q.Set("search_lang", strings.ToLower(strings.TrimSpace(params.SearchLang)))
 	}
-	if params.UILang != "" {
-		q.Set("ui_lang", params.UILang)
+	if uiLang := normalizeBraveUILang(params.UILang); uiLang != "" {
+		q.Set("ui_lang", uiLang)
 	}
 	if f := normalizeFreshness(params.Freshness); f != "" {
 		q.Set("freshness", f)
@@ -94,4 +95,37 @@ func (p *braveSearchProvider) Search(ctx context.Context, params searchParams) (
 		})
 	}
 	return results, nil
+}
+
+func normalizeBraveCountry(country string) string {
+	c := strings.ToUpper(strings.TrimSpace(country))
+	if c == "" || c == "ALL" {
+		return ""
+	}
+
+	// Brave's web-search country enum does not currently accept Vietnam (VN).
+	// Omitting this parameter still works for Vietnamese queries and avoids a
+	// hard 422 that prevents Brave from being usable as the first provider.
+	if c == "VN" {
+		return ""
+	}
+
+	if len(c) != 2 {
+		return ""
+	}
+	return c
+}
+
+func normalizeBraveUILang(uiLang string) string {
+	lang := strings.TrimSpace(uiLang)
+	if lang == "" {
+		return ""
+	}
+
+	// Brave expects a locale-style value such as en-US. Models often pass bare
+	// language codes like "vi" or "en", which Brave rejects with 422.
+	if len(lang) != 5 || lang[2] != '-' {
+		return ""
+	}
+	return strings.ToLower(lang[:2]) + "-" + strings.ToUpper(lang[3:])
 }
