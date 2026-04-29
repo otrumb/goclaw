@@ -102,6 +102,23 @@ func TestSSEReader_LargePayload(t *testing.T) {
 	}
 }
 
+func TestSSEReader_NativeImageSizedPayload(t *testing.T) {
+	// Codex native image_generation may stream a generated image as one large
+	// base64 SSE data line. This must not trip bufio.Scanner's token limit.
+	large := strings.Repeat("x", 2*1024*1024) // > previous 1MB cap
+	input := "data: " + large + "\n"
+	sc := NewSSEScanner(strings.NewReader(input))
+	if !sc.Next() {
+		t.Fatal("expected Next to return true for native-image-sized payload")
+	}
+	if len(sc.Data()) != len(large) {
+		t.Errorf("data len = %d, want %d", len(sc.Data()), len(large))
+	}
+	if sc.Err() != nil {
+		t.Errorf("unexpected error: %v", sc.Err())
+	}
+}
+
 func TestSSEReader_EventTypeTracking(t *testing.T) {
 	input := "event: content_block_start\ndata: start\nevent: content_block_delta\ndata: delta\n"
 	sc := NewSSEScanner(strings.NewReader(input))

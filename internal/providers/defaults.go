@@ -12,8 +12,12 @@ const (
 	DefaultHTTPTimeout = 300 * time.Second
 
 	// SSE stream scanner buffer sizes (OpenAI-compat, Anthropic, Codex).
-	SSEScanBufInit = 64 * 1024   // 64KB initial buffer
-	SSEScanBufMax  = 1024 * 1024 // 1MB max line for large tool call / thinking chunks
+	// Codex native image_generation can emit a final base64 image in a single
+	// SSE data line. Keep the initial buffer small, but allow lines large enough
+	// for Telegram-sized generated images instead of failing with
+	// "bufio.Scanner: token too long".
+	SSEScanBufInit = 64 * 1024        // 64KB initial buffer
+	SSEScanBufMax  = 32 * 1024 * 1024 // 32MB max line for native image SSE frames
 
 	// Stdio/JSONRPC scanner buffer sizes (Claude CLI, ACP).
 	StdioScanBufInit = 256 * 1024       // 256KB initial buffer
@@ -28,7 +32,7 @@ func NewDefaultTransport() *http.Transport {
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ResponseHeaderTimeout: 180 * time.Second, // wait for first byte of response (3min for slow providers)
-		IdleConnTimeout:       90 * time.Second, // close idle keep-alive connections
+		IdleConnTimeout:       90 * time.Second,  // close idle keep-alive connections
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		MaxIdleConns:          100,

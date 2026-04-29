@@ -398,17 +398,17 @@ func TestResolveEffectiveChatGPTOAuthRoutingIgnoresCustomMembersWhenProviderOwns
 
 // ─── ParseAllowImageGeneration ────────────────────────────────────────────
 
-func TestParseAllowImageGeneration_DefaultTrue_NoOtherConfig(t *testing.T) {
+func TestParseAllowImageGeneration_DefaultFalse_NoOtherConfig(t *testing.T) {
 	ag := &AgentData{}
-	if !ag.ParseAllowImageGeneration() {
-		t.Error("empty other_config must default to true (image gen enabled)")
+	if ag.ParseAllowImageGeneration() {
+		t.Error("empty other_config must default to false (native image gen disabled)")
 	}
 }
 
-func TestParseAllowImageGeneration_DefaultTrue_EmptyObject(t *testing.T) {
+func TestParseAllowImageGeneration_DefaultFalse_EmptyObject(t *testing.T) {
 	ag := &AgentData{OtherConfig: json.RawMessage(`{}`)}
-	if !ag.ParseAllowImageGeneration() {
-		t.Error("empty JSONB object must default to true")
+	if ag.ParseAllowImageGeneration() {
+		t.Error("empty JSONB object must default to false")
 	}
 }
 
@@ -426,16 +426,16 @@ func TestParseAllowImageGeneration_ExplicitFalse(t *testing.T) {
 	}
 }
 
-func TestParseAllowImageGeneration_MalformedJSON_DefaultsTrue(t *testing.T) {
+func TestParseAllowImageGeneration_MalformedJSON_DefaultsFalse(t *testing.T) {
 	ag := &AgentData{OtherConfig: json.RawMessage(`{not-json`)}
-	if !ag.ParseAllowImageGeneration() {
-		t.Error("malformed other_config must default to true")
+	if ag.ParseAllowImageGeneration() {
+		t.Error("malformed other_config must default to false")
 	}
 }
 
-func TestParseAllowImageGeneration_UnrelatedKeys_DefaultsTrue(t *testing.T) {
+func TestParseAllowImageGeneration_UnrelatedKeys_DefaultsFalse(t *testing.T) {
 	ag := &AgentData{OtherConfig: json.RawMessage(`{"self_evolve":true,"skill_evolve":false}`)}
-	if !ag.ParseAllowImageGeneration() {
-		t.Error("other_config without allow_image_generation key must default to true")
+	if ag.ParseAllowImageGeneration() {
+		t.Error("other_config without allow_image_generation key must default to false")
 	}
 }

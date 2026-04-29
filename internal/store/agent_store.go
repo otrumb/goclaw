@@ -231,23 +231,22 @@ func (a *AgentData) ParseSelfEvolve() bool { return a.SelfEvolve }
 func (a *AgentData) ParseSkillEvolve() bool { return a.SkillEvolve }
 
 // ParseAllowImageGeneration returns whether the native image_generation tool
-// is allowed for this agent. Defaults to true (enabled) when not set in
-// other_config, so existing agents automatically get image generation with
-// Codex providers. Operators can explicitly disable it by setting
-// other_config.allow_image_generation = false.
+// is allowed for this agent. Defaults to false when not set so image requests
+// use the create_image function tool pipeline unless native generation is
+// explicitly enabled with other_config.allow_image_generation = true.
 // No DB column — code-only default to avoid a migration for a feature flag.
 func (a *AgentData) ParseAllowImageGeneration() bool {
 	if len(a.OtherConfig) <= 2 {
-		return true // default: enabled
+		return false // default: disabled; use create_image tool pipeline
 	}
 	var bag struct {
 		AllowImageGeneration *bool `json:"allow_image_generation"`
 	}
 	if json.Unmarshal(a.OtherConfig, &bag) != nil {
-		return true // malformed config → default: enabled
+		return false // malformed config → default: disabled
 	}
 	if bag.AllowImageGeneration == nil {
-		return true // not set → default: enabled
+		return false // not set → default: disabled
 	}
 	return *bag.AllowImageGeneration
 }
