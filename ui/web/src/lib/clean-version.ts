@@ -1,6 +1,7 @@
-// Strip git build metadata from version string.
-// "v2.5.1-3-g4fd653c1" → "v2.5.1", "dev" → "dev"
+// Strip git-describe build metadata while preserving branded release suffixes.
+// "v2.5.1-3-g4fd653c1" -> "v2.5.1"
+// "v3.11.3-otrumb.2" -> "v3.11.3-otrumb.2"
+// "dev" -> "dev"
 export function cleanVersion(v: string): string {
-  const match = v.match(/^(v?\d+\.\d+\.\d+)/);
-  return match?.[1] ?? v;
+  return v.replace(/-\d+-g[0-9a-f]+$/i, "");
 }
