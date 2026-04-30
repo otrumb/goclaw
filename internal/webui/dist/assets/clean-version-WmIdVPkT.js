@@ -1,0 +1,1 @@
+function e(e){return e.replace(/-\d+-g[0-9a-f]+$/i,``)}export{e as t};

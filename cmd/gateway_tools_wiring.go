@@ -30,6 +30,7 @@ func wireExtraTools(
 
 	// DateTime tool (precise time for cron scheduling, memory timestamps, etc.)
 	toolsReg.Register(tools.NewDateTimeTool())
+	toolsReg.Register(tools.NewWeatherTool())
 
 	// Cron tool (agent-facing)
 	toolsReg.Register(tools.NewCronTool(pgStores.Cron))
