@@ -67,13 +67,15 @@ func makeCronJobHandler(sched *scheduler.Scheduler, msgBus *bus.MessageBus, cfg 
 			extraPrompt = fmt.Sprintf(
 				"[Cron Job]\nThis is scheduled job \"%s\" (ID: %s).\n"+
 					"Requester: user %s on channel \"%s\" (chat %s).\n"+
-					"Your response will be automatically delivered to that chat — just produce the content directly.",
+					"Your response will be automatically delivered to that chat — just produce the content directly.\n"+
+					"Do NOT call cron/reminder/scheduling tools. This is already the scheduled execution.",
 				job.Name, job.ID, job.UserID, job.DeliverChannel, job.DeliverTo,
 			)
 		} else {
 			extraPrompt = fmt.Sprintf(
 				"[Cron Job]\nThis is scheduled job \"%s\" (ID: %s), created by user %s.\n"+
-					"Delivery is not configured — respond normally.",
+					"Delivery is not configured — respond normally.\n"+
+					"Do NOT call cron/reminder/scheduling tools. This is already the scheduled execution.",
 				job.Name, job.ID, job.UserID,
 			)
 		}
@@ -106,6 +108,7 @@ func makeCronJobHandler(sched *scheduler.Scheduler, msgBus *bus.MessageBus, cfg 
 			RunID:             fmt.Sprintf("cron:%s", job.ID),
 			Stream:            false,
 			ExtraSystemPrompt: extraPrompt,
+			ToolAllow:         cronRunToolAllow(),
 			TraceName:         fmt.Sprintf("Cron [%s] - %s", job.Name, agentID),
 			TraceTags:         []string{"cron"},
 		})
@@ -155,6 +158,22 @@ func makeCronJobHandler(sched *scheduler.Scheduler, msgBus *bus.MessageBus, cfg 
 		}
 
 		return cronResult, nil
+	}
+}
+
+func cronRunToolAllow() []string {
+	// Cron executions are notification/content-generation turns, not scheduling
+	// requests. Exclude cron itself so reminder payloads such as "Nhắc bạn: ..."
+	// cannot recurse into cron.add and hit group mutation permissions.
+	return []string{
+		"datetime",
+		"weather",
+		"web_search",
+		"web_fetch",
+		"memory_search",
+		"memory_get",
+		"read_image",
+		"read_document",
 	}
 }
 

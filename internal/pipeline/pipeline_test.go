@@ -101,6 +101,89 @@ func TestPipeline_FinalizeRunsOnce(t *testing.T) {
 	}
 }
 
+func TestPipeline_RollsBackCheckpointedMessagesOnLLMError(t *testing.T) {
+	t.Parallel()
+	baseline := []providers.Message{{Role: "user", Content: "before"}}
+	flushed := false
+	rolledBack := false
+	setup := &mockStage{name: "context", execFn: func(ctx context.Context, state *RunState) error {
+		state.BaselineHistory = append([]providers.Message(nil), baseline...)
+		state.BaselineSet = true
+		state.Messages.SetHistory(baseline)
+		return nil
+	}}
+	checkpointLike := &mockStage{name: "checkpoint", execFn: func(ctx context.Context, state *RunState) error {
+		state.Messages.AppendPending(providers.Message{Role: "assistant", Content: "partial tool observation"})
+		pending := state.Messages.FlushPending()
+		if len(pending) != 1 {
+			t.Fatalf("pending len = %d, want 1", len(pending))
+		}
+		flushed = true
+		return nil
+	}}
+	failingThink := &mockStage{name: "think", execFn: func(ctx context.Context, state *RunState) error {
+		return errors.New("llm call: openai-codex: stream read error: stream error: INTERNAL_ERROR")
+	}}
+	p := NewPipeline(
+		[]Stage{setup},
+		[]Stage{checkpointLike, failingThink},
+		nil,
+		PipelineDeps{
+			Config: PipelineConfig{MaxIterations: 1},
+			RollbackMessages: func(ctx context.Context, sessionKey string, got []providers.Message) error {
+				rolledBack = true
+				if len(got) != len(baseline) || got[0].Content != baseline[0].Content {
+					t.Fatalf("rollback baseline = %#v, want %#v", got, baseline)
+				}
+				return nil
+			},
+		},
+	)
+	state := buildMinimalRunState()
+	_, err := p.Run(context.Background(), state)
+	if err == nil {
+		t.Fatal("Run() error = nil, want LLM error")
+	}
+	if !flushed {
+		t.Fatal("checkpoint-like stage did not flush")
+	}
+	if !rolledBack {
+		t.Fatal("RollbackMessages was not called")
+	}
+}
+
+func TestPipeline_DoesNotRollbackNonLLMError(t *testing.T) {
+	t.Parallel()
+	setup := &mockStage{name: "context", execFn: func(ctx context.Context, state *RunState) error {
+		state.BaselineHistory = []providers.Message{{Role: "user", Content: "before"}}
+		state.BaselineSet = true
+		return nil
+	}}
+	failingTool := &mockStage{name: "tool", execFn: func(ctx context.Context, state *RunState) error {
+		return errors.New("permission denied")
+	}}
+	rolledBack := false
+	p := NewPipeline(
+		[]Stage{setup},
+		[]Stage{failingTool},
+		nil,
+		PipelineDeps{
+			Config: PipelineConfig{MaxIterations: 1},
+			RollbackMessages: func(ctx context.Context, sessionKey string, got []providers.Message) error {
+				rolledBack = true
+				return nil
+			},
+		},
+	)
+	_, err := p.Run(context.Background(), buildMinimalRunState())
+	if err == nil {
+		t.Fatal("Run() error = nil, want tool error")
+	}
+	if rolledBack {
+		t.Fatal("RollbackMessages called for non-LLM error")
+	}
+}
+
 func TestPipeline_BreakLoopExitsIteration(t *testing.T) {
 	t.Parallel()
 	// BreakLoop completes all remaining stages in the iteration (ObserveStage

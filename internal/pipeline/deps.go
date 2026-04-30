@@ -61,10 +61,10 @@ type PipelineDeps struct {
 	InjectReminders  func(ctx context.Context, input *RunInput, msgs []providers.Message) []providers.Message
 
 	// Think callbacks (ThinkStage)
-	BuildFilteredTools  func(state *RunState) ([]providers.ToolDefinition, error)
-	CallLLM             func(ctx context.Context, state *RunState, req providers.ChatRequest) (*providers.ChatResponse, error)
-	UniqueToolCallIDs   func(calls []providers.ToolCall, runID string, iteration int) []providers.ToolCall
-	EmitBlockReply      func(content string) // emit block.reply for intermediate assistant content
+	BuildFilteredTools func(state *RunState) ([]providers.ToolDefinition, error)
+	CallLLM            func(ctx context.Context, state *RunState, req providers.ChatRequest) (*providers.ChatResponse, error)
+	UniqueToolCallIDs  func(calls []providers.ToolCall, runID string, iteration int) []providers.ToolCall
+	EmitBlockReply     func(content string) // emit block.reply for intermediate assistant content
 
 	// Prune callbacks (PruneStage)
 	PruneMessages   func(msgs []providers.Message, budget int) ([]providers.Message, PruneStats)
@@ -72,10 +72,10 @@ type PipelineDeps struct {
 	CompactMessages func(ctx context.Context, msgs []providers.Message, model string) ([]providers.Message, error)
 
 	// Cache-TTL gate callbacks (Phase 06). All optional (nil = feature disabled).
-	GetProviderCaps  func() providers.ProviderCapabilities  // provider capabilities for cache detection
-	GetPruningConfig func() *config.ContextPruningConfig    // pruning config (TTL field)
-	GetCacheTouch    func(sessionKey string) time.Time      // per-session last prune-mutation timestamp
-	MarkCacheTouched func(sessionKey string)                // record mutation timestamp AFTER prune mutates
+	GetProviderCaps  func() providers.ProviderCapabilities // provider capabilities for cache detection
+	GetPruningConfig func() *config.ContextPruningConfig   // pruning config (TTL field)
+	GetCacheTouch    func(sessionKey string) time.Time     // per-session last prune-mutation timestamp
+	MarkCacheTouched func(sessionKey string)               // record mutation timestamp AFTER prune mutates
 
 	// Memory flush callbacks (MemoryFlushStage, invoked by PruneStage)
 	RunMemoryFlush func(ctx context.Context, state *RunState) error
@@ -97,17 +97,20 @@ type PipelineDeps struct {
 
 	// Checkpoint callbacks (CheckpointStage)
 	FlushMessages func(ctx context.Context, sessionKey string, msgs []providers.Message) error
+	// RollbackMessages restores persisted session history after a failed run.
+	// This removes checkpoint-flushed user/tool messages from the failed turn.
+	RollbackMessages func(ctx context.Context, sessionKey string, baseline []providers.Message) error
 
 	// Finalize callbacks (FinalizeStage)
 	// PersistAssistantImages writes final (non-partial) images from the assistant
 	// response to workspace disk, appends MediaRefs, and clears inline base64.
 	// Called BEFORE building the assistant message for session persistence.
 	// nil = feature disabled (no Codex image gen or no workspace).
-	PersistAssistantImages   func(msg *providers.Message, workspace string)
-	SkillPostscript          func(ctx context.Context, content string, totalToolCalls int) string // skill evolution nudge (nil = disabled)
-	SanitizeContent          func(content string) string
-	StripMessageDirectives   func(content string) string
-	DeduplicateMediaSuffix   func(content, suffix string) string
+	PersistAssistantImages func(msg *providers.Message, workspace string)
+	SkillPostscript        func(ctx context.Context, content string, totalToolCalls int) string // skill evolution nudge (nil = disabled)
+	SanitizeContent        func(content string) string
+	StripMessageDirectives func(content string) string
+	DeduplicateMediaSuffix func(content, suffix string) string
 	IsSilentReply          func(content string) bool
 	EmitSessionCompleted   func(ctx context.Context, sessionKey string, msgCount, tokensUsed, compactionCount int)
 	UpdateMetadata         func(ctx context.Context, sessionKey string, usage providers.Usage) error

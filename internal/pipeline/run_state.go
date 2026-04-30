@@ -23,6 +23,12 @@ type RunState struct {
 
 	// Message buffer (read/write by multiple stages)
 	Messages *MessageBuffer
+	// BaselineHistory is the persisted session history loaded before the current
+	// user turn is built. If a run fails after checkpoint flushing partial
+	// messages, the pipeline rolls back to this snapshot so failed turns do not
+	// poison future context.
+	BaselineHistory []providers.Message
+	BaselineSet     bool
 
 	// Per-stage substates
 	Context   ContextState

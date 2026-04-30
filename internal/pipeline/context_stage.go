@@ -109,6 +109,8 @@ func (s *ContextStage) Execute(ctx context.Context, state *RunState) error {
 	// 3. Load session history + summary before BuildMessages.
 	if s.deps.LoadSessionHistory != nil && state.Input.SessionKey != "" {
 		history, summary := s.deps.LoadSessionHistory(ctx, state.Input.SessionKey)
+		state.BaselineHistory = append([]providers.Message(nil), history...)
+		state.BaselineSet = true
 		if len(history) > 0 {
 			state.Messages.SetHistory(history)
 		}

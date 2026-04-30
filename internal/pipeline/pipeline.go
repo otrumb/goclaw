@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+
+	"github.com/nextlevelbuilder/goclaw/internal/providers"
 )
 
 // Pipeline orchestrates stage execution for a single agent run.
@@ -71,7 +74,9 @@ func (p *Pipeline) Run(ctx context.Context, state *RunState) (*RunResult, error)
 	for state.Iteration = 0; state.Iteration < p.Deps.Config.MaxIterations; state.Iteration++ {
 		for _, stage := range p.iteration {
 			if err := stage.Execute(ctx, state); err != nil {
-				return nil, fmt.Errorf("iter %d %s: %w", state.Iteration, stage.Name(), err)
+				runErr := fmt.Errorf("iter %d %s: %w", state.Iteration, stage.Name(), err)
+				p.rollbackFailedTurn(context.WithoutCancel(ctx), state, runErr)
+				return nil, runErr
 			}
 			// AbortRun exits inner loop immediately — skip remaining stages.
 			if swr, ok := stage.(StageWithResult); ok && swr.Result() == AbortRun {
@@ -111,4 +116,33 @@ func (p *Pipeline) Run(ctx context.Context, state *RunState) (*RunResult, error)
 	result := state.BuildResult()
 	result.Duration = time.Since(start)
 	return result, nil
+}
+
+func (p *Pipeline) rollbackFailedTurn(ctx context.Context, state *RunState, runErr error) {
+	if p == nil || p.Deps.RollbackMessages == nil || state == nil || state.Input == nil || state.Input.SessionKey == "" || !state.BaselineSet {
+		return
+	}
+	if !shouldRollbackFailedTurn(runErr) {
+		return
+	}
+	baseline := append([]providers.Message(nil), state.BaselineHistory...)
+	if err := p.Deps.RollbackMessages(ctx, state.Input.SessionKey, baseline); err != nil {
+		slog.Warn("failed-turn rollback failed", "session", state.Input.SessionKey, "err", err, "run_err", runErr)
+		return
+	}
+	state.Messages.SetHistory(baseline)
+	slog.Info("failed-turn rolled back", "session", state.Input.SessionKey, "messages", len(baseline), "run_err", runErr)
+}
+
+func shouldRollbackFailedTurn(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "llm call") ||
+		strings.Contains(msg, "stream read error") ||
+		strings.Contains(msg, "stream error") ||
+		strings.Contains(msg, "internal_error") ||
+		strings.Contains(msg, "context length") ||
+		strings.Contains(msg, "token too long")
 }

@@ -57,6 +57,7 @@ func (l *Loop) pipelineCallbacks(req *RunRequest, bridgeRS *runState) pipelineCa
 		checkReadOnly:      l.makeCheckReadOnly(req, bridgeRS),
 		sanitizeContent:    SanitizeAssistantContent,
 		flushMessages:      l.makeFlushMessages(req),
+		rollbackMessages:   l.makeRollbackMessages(),
 		updateMetadata:     l.makeUpdateMetadata(req),
 		bootstrapCleanup:   l.makeBootstrapCleanup(),
 		maybeSummarize:     l.maybeSummarize,
@@ -85,6 +86,7 @@ type pipelineCallbackSet struct {
 	checkReadOnly      func(state *pipeline.RunState) (*providers.Message, bool)
 	sanitizeContent    func(string) string
 	flushMessages      func(ctx context.Context, sessionKey string, msgs []providers.Message) error
+	rollbackMessages   func(ctx context.Context, sessionKey string, baseline []providers.Message) error
 	updateMetadata     func(ctx context.Context, sessionKey string, usage providers.Usage) error
 	bootstrapCleanup   func(ctx context.Context, state *pipeline.RunState) error
 	maybeSummarize     func(ctx context.Context, sessionKey string)
@@ -390,6 +392,17 @@ func (l *Loop) makeFlushMessages(req *RunRequest) func(ctx context.Context, sess
 		for _, msg := range msgs {
 			l.sessions.AddMessage(ctx, sessionKey, msg)
 		}
+		return nil
+	}
+}
+
+func (l *Loop) makeRollbackMessages() func(ctx context.Context, sessionKey string, baseline []providers.Message) error {
+	return func(ctx context.Context, sessionKey string, baseline []providers.Message) error {
+		if l.sessions == nil || sessionKey == "" {
+			return nil
+		}
+		l.sessions.SetHistory(ctx, sessionKey, append([]providers.Message(nil), baseline...))
+		l.sessions.Save(ctx, sessionKey)
 		return nil
 	}
 }
