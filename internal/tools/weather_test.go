@@ -40,3 +40,23 @@ func TestSummarizeHourlyTomorrow(t *testing.T) {
 		t.Fatalf("first tomorrow time = %v", got[0]["time"])
 	}
 }
+
+func TestWeatherDailyWithConditions(t *testing.T) {
+	d := weatherDailyBlock{
+		Time:                        []string{"2026-05-01", "2026-05-02"},
+		WeatherCode:                 []int{0, 80},
+		Temperature2mMax:            []float64{31, 29},
+		Temperature2mMin:            []float64{25, 24},
+		PrecipitationProbabilityMax: []int{10, 60},
+	}
+	got := d.WithConditions()
+	if len(got) != 2 {
+		t.Fatalf("len(WithConditions) = %d, want 2", len(got))
+	}
+	if got[1]["condition"] != "rain showers" {
+		t.Fatalf("condition = %v", got[1]["condition"])
+	}
+	if got[0]["temperature_2m_max"] != float64(31) {
+		t.Fatalf("max temp = %v", got[0]["temperature_2m_max"])
+	}
+}

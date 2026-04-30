@@ -36,16 +36,16 @@ func (t *WeatherTool) Parameters() map[string]any {
 			},
 			"hourly": map[string]any{
 				"type":        "boolean",
-				"description": "Whether to include today's hourly temperature/rain probability summary. Default true.",
+				"description": "Whether to include hourly temperature/rain probability. Use true for 'theo giờ/hourly'. Default false when forecast_days > 2, otherwise true.",
 			},
 			"day": map[string]any{
 				"type":        "string",
 				"enum":        []string{"today", "tomorrow"},
-				"description": "Which day to summarize. Default 'today'. Use 'tomorrow' for ngày mai/tomorrow requests.",
+				"description": "Optional single-day focus. Use 'tomorrow' for ngày mai/tomorrow. Omit for multi-day forecasts.",
 			},
 			"forecast_days": map[string]any{
 				"type":        "integer",
-				"description": "Number of forecast days to request from Open-Meteo, 1-7. Default 2 for tomorrow, otherwise 1.",
+				"description": "Number of forecast days to request from Open-Meteo, 1-16. Use 7 for '7 ngày tới', 10 for '10 ngày tới'. Default 2 for tomorrow, otherwise 1.",
 			},
 		},
 		"required": []string{"location"},
@@ -57,15 +57,11 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]any) *Result 
 	if location == "" || location == "<nil>" {
 		return ErrorResult("location is required, e.g. 'Đà Nẵng'")
 	}
-	hourly := true
-	if v, ok := args["hourly"].(bool); ok {
-		hourly = v
-	}
 	day := strings.ToLower(strings.TrimSpace(fmt.Sprint(args["day"])))
 	if day == "" || day == "<nil>" {
-		day = "today"
+		day = ""
 	}
-	if day != "today" && day != "tomorrow" {
+	if day != "" && day != "today" && day != "tomorrow" {
 		return ErrorResult("day must be 'today' or 'tomorrow'")
 	}
 	forecastDays := 1
@@ -73,7 +69,11 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]any) *Result 
 		forecastDays = 2
 	}
 	if v, ok := weatherIntArg(args["forecast_days"]); ok {
-		forecastDays = max(1, min(7, v))
+		forecastDays = max(1, min(16, v))
+	}
+	hourly := forecastDays <= 2
+	if v, ok := args["hourly"].(bool); ok {
+		hourly = v
 	}
 
 	geo, err := t.geocode(ctx, location)
@@ -89,12 +89,21 @@ func (t *WeatherTool) Execute(ctx context.Context, args map[string]any) *Result 
 		"source":   "Open-Meteo",
 		"location": geo,
 		"current":  forecast.Current,
+		"daily":    forecast.Daily.WithConditions(),
 		"units":    forecast.CurrentUnits,
 		"timezone": forecast.Timezone,
-		"day":      day,
+		"requested": map[string]any{
+			"day":           day,
+			"forecast_days": forecastDays,
+			"hourly":        hourly,
+		},
 	}
 	if hourly {
-		out["hourly"] = summarizeHourly(forecast.Hourly, day)
+		focus := day
+		if focus == "" {
+			focus = "today"
+		}
+		out["hourly"] = summarizeHourly(forecast.Hourly, focus)
 	}
 	data, _ := json.MarshalIndent(out, "", "  ")
 	return NewResult(string(data))
@@ -118,6 +127,7 @@ type weatherForecastResponse struct {
 	CurrentUnits map[string]string  `json:"current_units"`
 	Current      weatherCurrent     `json:"current"`
 	Hourly       weatherHourlyBlock `json:"hourly"`
+	Daily        weatherDailyBlock  `json:"daily"`
 }
 
 type weatherCurrent struct {
@@ -142,6 +152,45 @@ type weatherHourlyBlock struct {
 	WeatherCode              []int     `json:"weather_code"`
 }
 
+type weatherDailyBlock struct {
+	Time                        []string  `json:"time"`
+	WeatherCode                 []int     `json:"weather_code"`
+	Temperature2mMax            []float64 `json:"temperature_2m_max"`
+	Temperature2mMin            []float64 `json:"temperature_2m_min"`
+	PrecipitationSum            []float64 `json:"precipitation_sum"`
+	RainSum                     []float64 `json:"rain_sum"`
+	PrecipitationProbabilityMax []int     `json:"precipitation_probability_max"`
+}
+
+func (d weatherDailyBlock) WithConditions() []map[string]any {
+	limit := len(d.Time)
+	out := make([]map[string]any, 0, limit)
+	for i := 0; i < limit; i++ {
+		row := map[string]any{"date": d.Time[i]}
+		if i < len(d.WeatherCode) {
+			row["condition"] = weatherCodeText(d.WeatherCode[i])
+			row["weather_code"] = d.WeatherCode[i]
+		}
+		if i < len(d.Temperature2mMax) {
+			row["temperature_2m_max"] = d.Temperature2mMax[i]
+		}
+		if i < len(d.Temperature2mMin) {
+			row["temperature_2m_min"] = d.Temperature2mMin[i]
+		}
+		if i < len(d.PrecipitationProbabilityMax) {
+			row["precipitation_probability_max"] = d.PrecipitationProbabilityMax[i]
+		}
+		if i < len(d.RainSum) {
+			row["rain_sum"] = d.RainSum[i]
+		}
+		if i < len(d.PrecipitationSum) {
+			row["precipitation_sum"] = d.PrecipitationSum[i]
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
 func (t *WeatherTool) geocode(ctx context.Context, location string) (weatherLocation, error) {
 	u := "https://geocoding-api.open-meteo.com/v1/search?name=" + url.QueryEscape(location) + "&count=1&language=vi&format=json"
 	var resp weatherGeoResponse
@@ -155,7 +204,7 @@ func (t *WeatherTool) geocode(ctx context.Context, location string) (weatherLoca
 }
 
 func (t *WeatherTool) forecast(ctx context.Context, loc weatherLocation, forecastDays int) (weatherForecastResponse, error) {
-	u := fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%g&longitude=%g&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,cloud_cover,wind_speed_10m&hourly=temperature_2m,precipitation_probability,precipitation,rain,weather_code&forecast_days=%d&timezone=auto", loc.Latitude, loc.Longitude, forecastDays)
+	u := fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%g&longitude=%g&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,cloud_cover,wind_speed_10m&hourly=temperature_2m,precipitation_probability,precipitation,rain,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,rain_sum,precipitation_probability_max&forecast_days=%d&timezone=auto", loc.Latitude, loc.Longitude, forecastDays)
 	var resp weatherForecastResponse
 	if err := t.getJSON(ctx, u, &resp); err != nil {
 		return weatherForecastResponse{}, fmt.Errorf("weather forecast failed: %w", err)
