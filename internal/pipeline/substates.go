@@ -34,6 +34,7 @@ type ThinkState struct {
 	TruncRetries    int  // consecutive truncation retries (max 3)
 	OverflowRetries int  // context overflow compact+retry attempts (max 1)
 	StreamingActive bool // true during active stream
+	ReminderRetry   bool // true after forcing one retry for missed reminder tool routing
 
 	// Tools is populated by ContextStage (iteration=0) for overhead calculation.
 	// It holds the best-effort tool list at run start and is used exclusively by

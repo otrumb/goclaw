@@ -258,13 +258,17 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 		// value to compare against when deciding to forward. Pairs with the
 		// MessageTool cross-target guard.
 		if cfg.ChatID != "" {
+			targetChannel := cfg.Channel
+			if targetChannel == "" {
+				targetChannel = channelLabel
+			}
 			kind := "direct"
 			if cfg.PeerKind == "group" {
 				kind = "group"
 			}
 			lines = append(lines,
 				"<current_reply_target>",
-				fmt.Sprintf("  channel: %s", channelLabel),
+				fmt.Sprintf("  channel: %s", targetChannel),
 				fmt.Sprintf("  chat_id: %s", cfg.ChatID),
 				fmt.Sprintf("  kind: %s", kind),
 				"</current_reply_target>",

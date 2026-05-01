@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
@@ -151,5 +152,70 @@ func TestThinkStage_WriteFileWithArgsNoRetry(t *testing.T) {
 	}
 	if state.Think.TruncRetries != 0 {
 		t.Errorf("TruncRetries = %d, want 0 (args present)", state.Think.TruncRetries)
+	}
+}
+
+func TestThinkStage_ReminderWithoutToolCallsForcesRetry(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{Content: "Đến giờ rồi nè"}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := stateWithInput(&RunInput{SessionKey: "sess-1", RunID: "run-1", Message: "nhắc sau 1 phút"})
+
+	if err := stage.Execute(context.Background(), state); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != Continue {
+		t.Errorf("Result() = %v, want Continue", stage.Result())
+	}
+	if !state.Think.ReminderRetry {
+		t.Fatal("ReminderRetry = false, want true")
+	}
+	pending := state.Messages.Pending()
+	if len(pending) != 1 || !strings.Contains(pending[0].Content, "Call datetime first") {
+		t.Fatalf("pending reminder hint missing: %+v", pending)
+	}
+}
+
+func TestThinkStage_ReminderRetryOnlyOnce(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{Content: "Đến giờ rồi nè"}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := stateWithInput(&RunInput{SessionKey: "sess-1", RunID: "run-1", Message: "nhắc sau 1 phút"})
+	state.Think.ReminderRetry = true
+
+	if err := stage.Execute(context.Background(), state); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != BreakLoop {
+		t.Errorf("Result() = %v, want BreakLoop after retry already used", stage.Result())
+	}
+}
+
+func TestThinkStage_CronRunReminderTextDoesNotForceRetry(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{Content: "Đến giờ rồi nè"}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := stateWithInput(&RunInput{SessionKey: "sess-1", RunID: "cron:job-1", Message: "nhắc sau 1 phút"})
+
+	if err := stage.Execute(context.Background(), state); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != BreakLoop {
+		t.Errorf("Result() = %v, want BreakLoop for cron execution", stage.Result())
 	}
 }

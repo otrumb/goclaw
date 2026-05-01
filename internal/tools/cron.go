@@ -297,6 +297,17 @@ func (t *CronTool) handleAdd(ctx context.Context, args map[string]any, agentID, 
 		return ErrorResult(fmt.Sprintf("failed to create cron job: %v", err))
 	}
 
+	if replyTo := ToolReplyToMessageIDFromCtx(ctx); replyTo != "" {
+		payload := job.Payload
+		payload.ReplyToMessageID = replyTo
+		if threadID := ToolMessageThreadIDFromCtx(ctx); threadID != "" {
+			payload.MessageThreadID = threadID
+		}
+		if updated, uErr := t.cronStore.UpdateJob(ctx, job.ID, store.CronJobPatch{Payload: &payload}); uErr == nil {
+			job = updated
+		}
+	}
+
 	// Set wake_heartbeat if requested (triggers heartbeat after cron job completes)
 	if wh, _ := jobObj["wake_heartbeat"].(bool); wh {
 		wakeTrue := true

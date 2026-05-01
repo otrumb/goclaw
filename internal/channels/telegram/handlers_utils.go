@@ -86,6 +86,9 @@ func (c *Channel) detectMention(msg *telego.Message, botUsername string) bool {
 
 	// Reply to bot's message = implicit mention
 	if msg.ReplyToMessage != nil && msg.ReplyToMessage.From != nil {
+		if c.hasOtherMention(msg, botUsername) {
+			return false
+		}
 		if msg.ReplyToMessage.From.Username == botUsername {
 			return true
 		}

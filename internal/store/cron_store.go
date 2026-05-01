@@ -48,9 +48,11 @@ type CronSchedule struct {
 
 // CronPayload describes what a job does when triggered.
 type CronPayload struct {
-	Kind    string `json:"kind" db:"-"`
-	Message string `json:"message" db:"-"`
-	Command string `json:"command,omitempty" db:"-"`
+	Kind             string `json:"kind" db:"-"`
+	Message          string `json:"message" db:"-"`
+	Command          string `json:"command,omitempty" db:"-"`
+	ReplyToMessageID string `json:"replyToMessageId,omitempty" db:"-"`
+	MessageThreadID  string `json:"messageThreadId,omitempty" db:"-"`
 }
 
 // CronJobState tracks runtime state for a job.
@@ -94,6 +96,7 @@ type CronJobPatch struct {
 	DeliverChannel *string       `json:"deliverChannel,omitempty" db:"-"`
 	DeliverTo      *string       `json:"deliverTo,omitempty" db:"-"`
 	WakeHeartbeat  *bool         `json:"wakeHeartbeat,omitempty" db:"-"`
+	Payload        *CronPayload  `json:"payload,omitempty" db:"-"`
 }
 
 // CronEvent represents a job lifecycle event sent to subscribers.

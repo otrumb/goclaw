@@ -8,7 +8,7 @@ import (
 // Test 8: ChatID present → prompt contains <current_reply_target> block.
 func TestSystemPromptCurrentReplyTargetInjected(t *testing.T) {
 	cfg := fullTestConfig()
-	cfg.Channel = "telegram"
+	cfg.Channel = "otrumai-bot"
 	cfg.ChannelType = "telegram"
 	cfg.ChatID = "123"
 	cfg.PeerKind = "direct"
@@ -17,6 +17,7 @@ func TestSystemPromptCurrentReplyTargetInjected(t *testing.T) {
 
 	for _, want := range []string{
 		"<current_reply_target>",
+		"channel: otrumai-bot",
 		"chat_id: 123",
 		"kind: direct",
 		"</current_reply_target>",
@@ -25,6 +26,26 @@ func TestSystemPromptCurrentReplyTargetInjected(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt missing %q", want)
 		}
+	}
+}
+
+func TestSystemPromptCurrentReplyTargetUsesChannelInstance(t *testing.T) {
+	cfg := fullTestConfig()
+	cfg.Channel = "smartca-care-bot"
+	cfg.ChannelType = "telegram"
+	cfg.ChatID = "-5060265610"
+	cfg.PeerKind = "group"
+
+	prompt := BuildSystemPrompt(cfg)
+
+	if !strings.Contains(prompt, "running in telegram") {
+		t.Error("prompt should still describe the platform type")
+	}
+	if !strings.Contains(prompt, "channel: smartca-care-bot") {
+		t.Error("current_reply_target should use the channel instance, not platform type")
+	}
+	if strings.Contains(prompt, "channel: telegram") {
+		t.Error("current_reply_target must not use the platform type as a delivery channel")
 	}
 }
 

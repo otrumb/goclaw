@@ -94,6 +94,22 @@ func TestDetectMention_ReplyToBotMessage(t *testing.T) {
 	}
 }
 
+func TestDetectMention_ReplyToBotButMentionsOtherBot(t *testing.T) {
+	ch := &Channel{}
+	msg := &telego.Message{
+		Text: "@otherbot nhắc sau 1 phút",
+		Entities: []telego.MessageEntity{
+			{Type: "mention", Offset: 0, Length: 9},
+		},
+		ReplyToMessage: &telego.Message{
+			From: &telego.User{Username: "testbot"},
+		},
+	}
+	if ch.detectMention(msg, "testbot") {
+		t.Error("detectMention should return false when a reply to this bot explicitly mentions another bot")
+	}
+}
+
 func TestDetectMention_ReplyToDifferentUser(t *testing.T) {
 	ch := &Channel{}
 	msg := &telego.Message{

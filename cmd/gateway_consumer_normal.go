@@ -400,6 +400,8 @@ func processNormalMessage(
 		Stream:            enableStream,
 		HistoryLimit:      msg.HistoryLimit,
 		ToolAllow:         msg.ToolAllow,
+		ReplyToMessageID:  msg.Metadata["origin_reply_to_message_id"],
+		MessageThreadID:   msg.Metadata[tools.MetaMessageThreadID],
 		ExtraSystemPrompt: extraPrompt,
 		SkillFilter:       skillFilter,
 	}, scheduler.ScheduleOpts{

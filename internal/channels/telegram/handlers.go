@@ -225,7 +225,7 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 		return
 	}
 
-	// Enrich content with forward/reply/location context
+	// Enrich content with forward/reply/location context.
 	msgCtx := buildMessageContext(message, c.bot.Username())
 	content = enrichContentWithContext(content, msgCtx)
 
@@ -289,8 +289,9 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 
 		wasMentioned := c.detectMention(message, botUsername)
 
-		// Reply to bot's message counts as implicit mention
-		if !wasMentioned && msgCtx.ReplyInfo != nil && msgCtx.ReplyInfo.IsBotReply {
+		// Reply to bot's message counts as implicit mention unless this message
+		// explicitly calls someone else (common in multi-bot group threads).
+		if !wasMentioned && msgCtx.ReplyInfo != nil && msgCtx.ReplyInfo.IsBotReply && !c.hasOtherMention(message, botUsername) {
 			wasMentioned = true
 		}
 
@@ -583,6 +584,9 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 		"first_name": user.FirstName,
 		"is_group":   fmt.Sprintf("%t", isGroup),
 		"local_key":  localKey,
+	}
+	if message.ReplyToMessage != nil {
+		metadata["origin_reply_to_message_id"] = fmt.Sprintf("%d", message.ReplyToMessage.MessageID)
 	}
 	if message.Chat.Title != "" {
 		metadata[tools.MetaChatTitle] = message.Chat.Title

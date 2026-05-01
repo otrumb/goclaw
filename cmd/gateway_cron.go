@@ -15,6 +15,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/scheduler"
 	"github.com/nextlevelbuilder/goclaw/internal/sessions"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
+	"github.com/nextlevelbuilder/goclaw/internal/tools"
 )
 
 // makeCronJobHandler creates a cron job handler that routes through the scheduler's cron lane.
@@ -135,6 +136,18 @@ func makeCronJobHandler(sched *scheduler.Scheduler, msgBus *bus.MessageBus, cfg 
 			}
 			if peerKind == "group" {
 				outMsg.Metadata = map[string]string{"group_id": job.DeliverTo}
+			}
+			if job.Payload.ReplyToMessageID != "" {
+				if outMsg.Metadata == nil {
+					outMsg.Metadata = map[string]string{}
+				}
+				outMsg.Metadata["reply_to_message_id"] = job.Payload.ReplyToMessageID
+			}
+			if job.Payload.MessageThreadID != "" {
+				if outMsg.Metadata == nil {
+					outMsg.Metadata = map[string]string{}
+				}
+				outMsg.Metadata[tools.MetaMessageThreadID] = job.Payload.MessageThreadID
 			}
 			appendMediaToOutbound(&outMsg, result.Media)
 			msgBus.PublishOutbound(outMsg)

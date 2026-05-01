@@ -130,6 +130,11 @@ func (s *ThinkStage) Execute(ctx context.Context, state *RunState) error {
 	// message with sanitization + MediaRefs, so skip AppendPending here to avoid
 	// a duplicate. Matches v2 behavior where loop breaks before appending.
 	if len(resp.ToolCalls) == 0 {
+		if shouldRetryReminderToolRouting(state) {
+			state.Think.ReminderRetry = true
+			state.Messages.AppendPending(providers.Message{Role: "user", Content: reminderToolRoutingHint})
+			return nil
+		}
 		s.result = BreakLoop
 		return nil
 	}
@@ -152,6 +157,31 @@ func (s *ThinkStage) Execute(ctx context.Context, state *RunState) error {
 	}
 
 	return nil
+}
+
+const reminderToolRoutingHint = "[System] The user's current message is a reminder/alarm/scheduling request. You must not answer as if the reminder is already due. Call datetime first, then call cron with action=\"add\" for the requested future time. Only after cron succeeds, confirm briefly."
+
+func shouldRetryReminderToolRouting(state *RunState) bool {
+	if state == nil || state.Input == nil || state.Think.ReminderRetry || state.Tool.TotalToolCalls > 0 {
+		return false
+	}
+	if strings.HasPrefix(state.Input.RunID, "cron:") || strings.EqualFold(state.Input.Channel, "cron") {
+		return false
+	}
+	return looksLikeReminderRequest(state.Input.Message)
+}
+
+func looksLikeReminderRequest(message string) bool {
+	text := strings.ToLower(message)
+	for _, marker := range []string{
+		"nhắc sau", "nhac sau", "nhắc tôi", "nhac toi", "nhắc mình", "nhac minh",
+		"hẹn giờ", "hen gio", "báo thức", "bao thuc", "remind me", "reminder", "schedule this",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // maybeInjectNudge injects iteration budget warnings at 70% and 90%.
