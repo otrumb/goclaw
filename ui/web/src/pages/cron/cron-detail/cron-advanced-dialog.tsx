@@ -35,7 +35,7 @@ interface CronAdvancedDialogProps {
 
 function deriveDefaults(job: CronJob): CronAdvancedFormData {
   return {
-    timezone: job.schedule.tz ?? "UTC",
+    timezone: job.schedule.tz ?? "Asia/Saigon",
     deliver: job.deliver ?? false,
     channel: job.deliverChannel ?? "",
     to: job.deliverTo ?? "",
@@ -95,7 +95,7 @@ export function CronAdvancedDialog({ open, onOpenChange, job, onUpdate }: CronAd
       return;
     }
     const data = form.getValues();
-    if (data.timezone && data.timezone !== "UTC" && !isValidIanaTimezone(data.timezone)) {
+    if (data.timezone && !isValidIanaTimezone(data.timezone)) {
       toast.error(t("detail.invalidTimezone", "Invalid timezone"));
       return;
     }
@@ -104,7 +104,7 @@ export function CronAdvancedDialog({ open, onOpenChange, job, onUpdate }: CronAd
       await onUpdate(job.id, {
         schedule: {
           ...job.schedule,
-          tz: data.timezone !== "UTC" ? data.timezone : "",
+          tz: data.timezone,
         },
         deliver: data.deliver,
         deliverChannel: data.deliver ? data.channel.trim() || undefined : undefined,

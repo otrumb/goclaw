@@ -20,7 +20,7 @@ func (t *DateTimeTool) Description() string {
 	return `Get the current date and time. Use this when you need precise timestamps for scheduling (cron jobs), logging, or any time-sensitive operation.
 
 Returns current time in both UTC and the requested timezone.
-If no timezone is provided, returns UTC only.`
+If no timezone is provided, defaults to Asia/Saigon (UTC+7).`
 }
 
 func (t *DateTimeTool) Parameters() map[string]any {
@@ -29,7 +29,7 @@ func (t *DateTimeTool) Parameters() map[string]any {
 		"properties": map[string]any{
 			"timezone": map[string]any{
 				"type":        "string",
-				"description": "IANA timezone name (e.g. 'Asia/Ho_Chi_Minh', 'America/New_York'). If omitted, returns UTC only.",
+				"description": "IANA timezone name (e.g. 'Asia/Saigon', 'Asia/Ho_Chi_Minh', 'America/New_York'). If omitted, defaults to Asia/Saigon (UTC+7).",
 			},
 		},
 	}
@@ -42,7 +42,11 @@ func (t *DateTimeTool) Execute(_ context.Context, args map[string]any) *Result {
 		"unix_ms": now.UnixMilli(),
 	}
 
-	if tz, ok := args["timezone"].(string); ok && tz != "" {
+	tz, _ := args["timezone"].(string)
+	if tz == "" {
+		tz = "Asia/Saigon"
+	}
+	if tz != "" {
 		loc, err := time.LoadLocation(tz)
 		if err != nil {
 			return ErrorResult(fmt.Sprintf("invalid timezone '%s': use IANA names like 'Asia/Ho_Chi_Minh', 'America/New_York'", tz))

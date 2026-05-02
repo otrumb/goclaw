@@ -48,7 +48,7 @@ export function CronOverviewTab({ job, onUpdate }: CronOverviewTabProps) {
   const [scheduleKind, setScheduleKind] = useState<ScheduleKind>(job.schedule.kind as ScheduleKind);
   const [everySeconds, setEverySeconds] = useState(getEverySeconds(job));
   const [cronExpr, setCronExpr] = useState(job.schedule.expr ?? "0 * * * *");
-  const [timezone, setTimezone] = useState(job.schedule.tz ?? "UTC");
+  const [timezone, setTimezone] = useState(job.schedule.tz ?? "Asia/Saigon");
   const [message, setMessage] = useState(job.payload?.message ?? "");
   const [agentId, setAgentId] = useState(job.agentId ?? "");
   const [enabled, setEnabled] = useState(job.enabled);
@@ -82,7 +82,7 @@ export function CronOverviewTab({ job, onUpdate }: CronOverviewTabProps) {
 
   const handleSave = async () => {
     if (!onUpdate) return;
-    if (timezone && timezone !== "UTC" && !isValidIanaTimezone(timezone)) {
+    if (timezone && !isValidIanaTimezone(timezone)) {
       toast.error(t("detail.invalidTimezone", "Invalid timezone"));
       return;
     }
@@ -90,11 +90,11 @@ export function CronOverviewTab({ job, onUpdate }: CronOverviewTabProps) {
     try {
       let schedule;
       if (scheduleKind === "every") {
-        schedule = { kind: "every" as const, everyMs: Number(everySeconds) * 1000, tz: timezone !== "UTC" ? timezone : "" };
+        schedule = { kind: "every" as const, everyMs: Number(everySeconds) * 1000, tz: timezone };
       } else if (scheduleKind === "cron") {
-        schedule = { kind: "cron" as const, expr: cronExpr, tz: timezone !== "UTC" ? timezone : "" };
+        schedule = { kind: "cron" as const, expr: cronExpr, tz: timezone };
       } else {
-        schedule = { kind: "at" as const, atMs: job.schedule.atMs ?? Date.now() + 60000, tz: timezone !== "UTC" ? timezone : "" };
+        schedule = { kind: "at" as const, atMs: job.schedule.atMs ?? Date.now() + 60000, tz: timezone };
       }
       const patch: import("../hooks/use-cron").CronJobPatch = {
         schedule,
@@ -212,7 +212,7 @@ export function CronOverviewTab({ job, onUpdate }: CronOverviewTabProps) {
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Calendar className="h-3 w-3" />{t("detail.infoRows.nextRun")}
               </div>
-              <div className="mt-1 text-sm font-medium">{formatDate(new Date(job.state.nextRunAtMs))}</div>
+              <div className="mt-1 text-sm font-medium">{formatDate(new Date(job.state.nextRunAtMs), timezone)}</div>
             </div>
           )}
           {job.state?.lastRunAtMs && (

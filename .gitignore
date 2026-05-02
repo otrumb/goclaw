@@ -92,3 +92,4 @@ compose.d/*
 goclaw-patched-linux-amd64
 ui/web/nginx.staging.conf
 migrations
+/goclaw.exe

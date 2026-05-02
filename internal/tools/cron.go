@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -80,9 +81,10 @@ VALID ACTIONS AND EXACT PAYLOAD SHAPES:
 { "action": "runs", "jobId": "string" }
 
 SCHEDULE SCHEMA:
-- at: { "kind": "at", "atMs": <unix-milliseconds> }
+- at: { "kind": "at", "atLocal": "<YYYY-MM-DDTHH:mm:ss>", "tz": "<IANA timezone, e.g. Asia/Saigon>" }
+- at trusted timestamp fallback: { "kind": "at", "atMs": <unix-milliseconds>, "trustedAtMs": true, "tz": "<IANA timezone, e.g. Asia/Saigon>" }
 - every: { "kind": "every", "everyMs": <interval-ms> }
-- cron: { "kind": "cron", "expr": "<5-field cron>", "tz": "<IANA timezone, e.g. Asia/Ho_Chi_Minh; omit for gateway default>" }
+- cron: { "kind": "cron", "expr": "<5-field cron>", "tz": "<IANA timezone, e.g. Asia/Saigon; omit for gateway default>" }
 
 RULES:
 - For action="add", send the job inside "job". Do not place job fields at the root level.
@@ -90,7 +92,10 @@ RULES:
 - Always use "jobId". Do not use "id".
 - "name", "schedule", and "message" are required for add.
 - "name" must match: lowercase letters, numbers, hyphens only.
-- Before creating or updating a scheduled job, call the datetime tool first to get the precise current time and unix_ms timestamp. Never guess timestamps.
+- Before creating or updating a scheduled job, call the datetime tool first to get precise current local time in Asia/Saigon unless the user explicitly requested another timezone.
+- For natural-language one-shot reminders, use atLocal+tz. Let the LLM interpret the user's language, then pass the resolved local wall-clock time to this tool.
+- Use atMs only for non-LLM/programmatic callers that already have a trusted Unix timestamp, and set trustedAtMs=true. If you are resolving natural language, never use atMs.
+- Use cron schedules only for recurring jobs. Do not use cron for one-shot reminders unless the user explicitly asks for recurrence.
 - Omit optional fields when unknown; do not invent placeholder values like "", 0, or null unless required.
 - Jobs run as isolated agent turns using the provided "message".`
 }
@@ -225,14 +230,40 @@ func (t *CronTool) handleAdd(ctx context.Context, args map[string]any, agentID, 
 
 	switch schedule.Kind {
 	case "at":
-		if v, ok := numberFromMap(scheduleObj, "atMs"); ok {
-			ms := int64(v)
+		schedule.TZ = normalizeCronTimezone(stringFromMap(scheduleObj, "tz"))
+		if schedule.TZ == "" {
+			schedule.TZ = "Asia/Saigon"
+		}
+		loc, err := time.LoadLocation(schedule.TZ)
+		if err != nil {
+			return ErrorResult(fmt.Sprintf("invalid timezone '%s': use IANA names like 'Asia/Saigon', 'America/New_York'", schedule.TZ))
+		}
+		if atLocal := stringFromMap(scheduleObj, "atLocal"); atLocal != "" {
+			ms, err := parseAtLocalMS(atLocal, loc)
+			if err != nil {
+				return ErrorResult(fmt.Sprintf("job.schedule.atLocal is invalid: %v. Use format YYYY-MM-DDTHH:mm:ss, for example 2026-05-02T13:00:00", err))
+			}
 			if ms <= time.Now().UnixMilli() {
-				return ErrorResult(fmt.Sprintf("job.schedule.atMs is in the past (%d). Use a future Unix timestamp in milliseconds. Current time is %d ms", ms, time.Now().UnixMilli()))
+				return ErrorResult(fmt.Sprintf("job.schedule.atLocal is in the past (%s %s). Use a future local time", atLocal, schedule.TZ))
+			}
+			schedule.AtMS = &ms
+		} else if v, ok := numberFromMap(scheduleObj, "atMs"); ok {
+			trustedAtMS, _ := scheduleObj["trustedAtMs"].(bool)
+			if !trustedAtMS {
+				return ErrorResult("job.schedule.atLocal and job.schedule.tz are required for one-shot reminders. Do not use atMs for natural-language scheduling; resolve the user's requested wall-clock time and retry with atLocal like 2026-05-02T14:00:00 plus tz Asia/Saigon.")
+			}
+			ms := int64(v)
+			now := time.Now().UnixMilli()
+			if ms <= now {
+				if adjusted, ok := adjustNearPastAtMS(ms, now); ok {
+					ms = adjusted
+				} else {
+					return ErrorResult(fmt.Sprintf("job.schedule.atMs is in the past (%d). Use a future Unix timestamp in milliseconds. Current time is %d ms", ms, now))
+				}
 			}
 			schedule.AtMS = &ms
 		} else {
-			return ErrorResult("job.schedule.atMs is required for 'at' schedule")
+			return ErrorResult("job.schedule.atLocal or job.schedule.atMs is required for 'at' schedule")
 		}
 	case "every":
 		if v, ok := numberFromMap(scheduleObj, "everyMs"); ok {
@@ -246,10 +277,10 @@ func (t *CronTool) handleAdd(ctx context.Context, args map[string]any, agentID, 
 		if schedule.Expr == "" {
 			return ErrorResult("job.schedule.expr is required for 'cron' schedule")
 		}
-		schedule.TZ = stringFromMap(scheduleObj, "tz")
+		schedule.TZ = normalizeCronTimezone(stringFromMap(scheduleObj, "tz"))
 		if schedule.TZ != "" {
 			if _, err := time.LoadLocation(schedule.TZ); err != nil {
-				return ErrorResult(fmt.Sprintf("invalid timezone '%s': use IANA names like 'Asia/Ho_Chi_Minh', 'America/New_York'", schedule.TZ))
+				return ErrorResult(fmt.Sprintf("invalid timezone '%s': use IANA names like 'Asia/Saigon', 'America/New_York'", schedule.TZ))
 			}
 		}
 	default:
@@ -266,10 +297,9 @@ func (t *CronTool) handleAdd(ctx context.Context, args map[string]any, agentID, 
 	// cron results delivered back to the same chat.
 	if !deliver {
 		if ctxChannel := ToolChannelFromCtx(ctx); ctxChannel != "" {
-			switch ctxChannel {
-			case "cli", "system", "subagent", "cron", "teammate":
+			if isInternalCronChannel(ctxChannel) {
 				// internal channels — don't auto-deliver
-			default:
+			} else {
 				deliver = true
 			}
 		}
@@ -291,8 +321,11 @@ func (t *CronTool) handleAdd(ctx context.Context, args map[string]any, agentID, 
 	if explicit, _ := jobObj["agentId"].(string); explicit != "" {
 		agentID = explicit
 	}
-
 	job, err := t.cronStore.AddJob(ctx, name, schedule, message, deliver, channel, to, agentID, userID)
+	if err != nil && isDuplicateCronJobNameError(err) {
+		name = uniqueCronJobName(name, time.Now())
+		job, err = t.cronStore.AddJob(ctx, name, schedule, message, deliver, channel, to, agentID, userID)
+	}
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("failed to create cron job: %v", err))
 	}
@@ -468,4 +501,69 @@ func stringFromMap(m map[string]any, key string) string {
 func numberFromMap(m map[string]any, key string) (float64, bool) {
 	v, ok := m[key].(float64)
 	return v, ok
+}
+
+func adjustNearPastAtMS(ms, now int64) (int64, bool) {
+	if ms <= 0 {
+		return 0, false
+	}
+	const nearPastWindow = int64(10 * time.Minute / time.Millisecond)
+	if now-ms > nearPastWindow {
+		return 0, false
+	}
+	return now + int64(60*time.Second/time.Millisecond), true
+}
+
+func isDuplicateCronJobNameError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate") && strings.Contains(msg, "cron") && strings.Contains(msg, "name")
+}
+
+func uniqueCronJobName(name string, now time.Time) string {
+	suffix := now.Format("20060102-150405")
+	if len(name)+1+len(suffix) <= 120 {
+		return name + "-" + suffix
+	}
+	keep := 120 - 1 - len(suffix)
+	if keep < 1 {
+		return suffix
+	}
+	return strings.TrimRight(name[:keep], "-") + "-" + suffix
+}
+
+func isInternalCronChannel(channel string) bool {
+	switch channel {
+	case "cli", "system", "subagent", "cron", "teammate", "http", "api", "wake":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeCronTimezone(tz string) string {
+	if tz == "Asia/Ho_Chi_Minh" {
+		return "Asia/Saigon"
+	}
+	return tz
+}
+
+func parseAtLocalMS(atLocal string, loc *time.Location) (int64, error) {
+	formats := []string{
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02 15:04",
+	}
+	for _, format := range formats {
+		if t, err := time.ParseInLocation(format, atLocal, loc); err == nil {
+			return t.UnixMilli(), nil
+		}
+	}
+	if t, err := time.Parse(time.RFC3339, atLocal); err == nil {
+		return t.UnixMilli(), nil
+	}
+	return 0, fmt.Errorf("unsupported local time %q", atLocal)
 }
