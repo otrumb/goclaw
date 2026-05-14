@@ -27,6 +27,10 @@ func wireExtraTools(
 	// web_search: tenant-scoped resolve requires stores + msgBus — register here.
 	toolsReg.Register(tools.NewWebSearchTool(pgStores.ConfigSecrets, msgBus))
 	slog.Info("web_search tool registered (tenant-scoped resolve)")
+	toolsReg.Register(tools.NewFlightFaresTool(pgStores.ConfigSecrets))
+	slog.Info("flight_fares tool registered")
+	toolsReg.Register(tools.NewGoogleMapsPlaceTool(pgStores.ConfigSecrets))
+	slog.Info("google_maps_place tool registered")
 
 	// DateTime tool (precise time for cron scheduling, memory timestamps, etc.)
 	toolsReg.Register(tools.NewDateTimeTool())
