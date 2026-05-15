@@ -31,6 +31,8 @@ func wireExtraTools(
 	slog.Info("flight_fares tool registered")
 	toolsReg.Register(tools.NewGoogleMapsPlaceTool(pgStores.ConfigSecrets))
 	slog.Info("google_maps_place tool registered")
+	toolsReg.Register(tools.NewSmartCAOrderScanTool(pgStores.ConfigSecrets))
+	slog.Info("smartca_order_scan tool registered")
 
 	// DateTime tool (precise time for cron scheduling, memory timestamps, etc.)
 	toolsReg.Register(tools.NewDateTimeTool())

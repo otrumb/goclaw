@@ -247,7 +247,7 @@ func (c *BaseChannel) SetGroupHistory(gh *PendingHistory) { c.groupHistory = gh 
 func (c *BaseChannel) GroupHistory() *PendingHistory { return c.groupHistory }
 
 // SetHistoryLimit sets the per-group message accumulation limit.
-func (c *BaseChannel) SetHistoryLimit(n int) { c.historyLimit = n }
+func (c *BaseChannel) SetHistoryLimit(n int) { c.historyLimit = NormalizeGroupHistoryLimit(n) }
 
 // HistoryLimit returns the per-group message accumulation limit.
 func (c *BaseChannel) HistoryLimit() int { return c.historyLimit }

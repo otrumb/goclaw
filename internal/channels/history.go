@@ -24,7 +24,10 @@ import (
 const maxHistoryKeys = 1000
 
 // DefaultGroupHistoryLimit is the default pending message limit per group.
-const DefaultGroupHistoryLimit = 200
+const DefaultGroupHistoryLimit = 15
+
+// MaxGroupHistoryLimit caps group context injected into LLM prompts.
+const MaxGroupHistoryLimit = 15
 
 const (
 	flushInterval        = 3 * time.Second  // periodic flush interval
@@ -234,6 +237,7 @@ func (ph *PendingHistory) BuildContext(historyKey, currentMessage string, limit 
 	if limit <= 0 || historyKey == "" {
 		return currentMessage
 	}
+	limit = NormalizeGroupHistoryLimit(limit)
 
 	ph.mu.Lock()
 	entries := ph.entries[historyKey]
@@ -250,6 +254,16 @@ func (ph *PendingHistory) BuildContext(historyKey, currentMessage string, limit 
 	if len(entriesCopy) == 0 {
 		return currentMessage
 	}
+	if len(entriesCopy) > limit {
+		entriesCopy = entriesCopy[len(entriesCopy)-limit:]
+	}
+
+	if isolatedContextIntent(currentMessage) {
+		entriesCopy = filterEntriesForCurrentIntent(entriesCopy, currentMessage)
+		if len(entriesCopy) == 0 {
+			return currentMessage
+		}
+	}
 
 	var lines []string
 	for _, e := range entriesCopy {
@@ -262,6 +276,73 @@ func (ph *PendingHistory) BuildContext(historyKey, currentMessage string, limit 
 
 	return fmt.Sprintf("[Chat messages since your last reply - for context]\n%s\n\n[Your current message]\n%s",
 		strings.Join(lines, "\n"), currentMessage)
+}
+
+// NormalizeGroupHistoryLimit caps configured group history to keep prompts small.
+func NormalizeGroupHistoryLimit(limit int) int {
+	if limit <= 0 {
+		return limit
+	}
+	if limit > MaxGroupHistoryLimit {
+		return MaxGroupHistoryLimit
+	}
+	return limit
+}
+
+func isolatedContextIntent(message string) bool {
+	m := strings.ToLower(message)
+	checks := []string{
+		"smartca_order_scan", "hủy đơn", "huỷ đơn", "xóa đơn", "xoá đơn", "đổi thiết bị",
+		"maps.app.goo.gl", "google.com/maps", "google maps",
+		"tạo ảnh", "tao anh", "create image", "poster", "banner quảng cáo",
+		"nhắc tôi", "nhắc tui", "remind me", "hẹn giờ",
+		"vé máy bay", "gia ve may bay", "flight", "airfare",
+	}
+	for _, check := range checks {
+		if strings.Contains(m, check) {
+			return true
+		}
+	}
+	return false
+}
+
+func filterEntriesForCurrentIntent(entries []HistoryEntry, currentMessage string) []HistoryEntry {
+	terms := intentTerms(currentMessage)
+	if len(terms) == 0 {
+		return nil
+	}
+	filtered := make([]HistoryEntry, 0, len(entries))
+	for _, entry := range entries {
+		body := strings.ToLower(entry.Body)
+		for _, term := range terms {
+			if strings.Contains(body, term) {
+				filtered = append(filtered, entry)
+				break
+			}
+		}
+	}
+	if len(filtered) > 3 {
+		filtered = filtered[len(filtered)-3:]
+	}
+	return filtered
+}
+
+func intentTerms(message string) []string {
+	m := strings.ToLower(message)
+	switch {
+	case strings.Contains(m, "hủy đơn") || strings.Contains(m, "huỷ đơn") || strings.Contains(m, "xóa đơn") || strings.Contains(m, "xoá đơn") || strings.Contains(m, "đổi thiết bị"):
+		return []string{"hủy", "huỷ", "xóa", "xoá", "đổi thiết bị", "uid", "cccd", "mã số thuế"}
+	case strings.Contains(m, "maps") || strings.Contains(m, "google maps"):
+		return []string{"maps", "địa chỉ", "quán", "nhà hàng", "place"}
+	case strings.Contains(m, "tạo ảnh") || strings.Contains(m, "tao anh") || strings.Contains(m, "create image") || strings.Contains(m, "poster") || strings.Contains(m, "banner"):
+		return []string{"tạo ảnh", "poster", "banner", "ảnh", "image"}
+	case strings.Contains(m, "nhắc") || strings.Contains(m, "remind") || strings.Contains(m, "hẹn giờ"):
+		return []string{"nhắc", "remind", "hẹn", "lịch"}
+	case strings.Contains(m, "vé máy bay") || strings.Contains(m, "flight") || strings.Contains(m, "airfare"):
+		return []string{"vé máy bay", "flight", "airfare", "dad", "sgn"}
+	default:
+		return nil
+	}
 }
 
 // GetEntries returns a copy of pending entries for a group.
