@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -113,5 +114,33 @@ func TestEffectiveRequireMention_Override(t *testing.T) {
 	r := resolvedTopicConfig{requireMention: &b}
 	if r.effectiveRequireMention(true) != false {
 		t.Error("effectiveRequireMention should return override false when set")
+	}
+}
+
+func TestTelegramInstanceConfigParsesGroups(t *testing.T) {
+	raw := []byte(`{
+		"group_policy":"pairing",
+		"groups":{
+			"-5060265610":{
+				"group_policy":"allowlist",
+				"allow_from":["619022260"],
+				"require_mention":true
+			}
+		}
+	}`)
+
+	var cfg telegramInstanceConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if cfg.Groups == nil || cfg.Groups["-5060265610"] == nil {
+		t.Fatalf("groups override was not parsed: %#v", cfg.Groups)
+	}
+	group := cfg.Groups["-5060265610"]
+	if group.GroupPolicy != "allowlist" {
+		t.Fatalf("group policy = %q, want allowlist", group.GroupPolicy)
+	}
+	if len(group.AllowFrom) != 1 || group.AllowFrom[0] != "619022260" {
+		t.Fatalf("allow_from = %#v, want [619022260]", group.AllowFrom)
 	}
 }
