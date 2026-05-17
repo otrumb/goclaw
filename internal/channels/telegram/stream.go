@@ -77,26 +77,27 @@ func shouldFallbackFromDraft(err error) bool {
 //	STREAMING   → Stop() → final flush → STOPPED
 //	STREAMING   → Clear() → deleteMessage (message transport only) → DELETED
 type DraftStream struct {
-	bot             *telego.Bot
-	chatID          int64
-	messageThreadID int           // forum topic thread ID (0 = no thread)
-	messageID       int           // 0 = not yet created (message transport only)
-	lastText        string        // last sent text (for dedup)
-	throttle        time.Duration // min delay between edits
-	lastEdit        time.Time
-	mu              sync.Mutex
-	stopped         bool
-	pending         string // pending text to send (buffered during throttle)
-	draftID         int    // sendMessageDraft draft_id (0 = message transport)
-	useDraft        bool   // true = draft transport, false = message transport
-	draftFailed     bool   // true = draft API rejected permanently, using message transport
+	bot               *telego.Bot
+	chatID            int64
+	messageThreadID   int           // forum topic thread ID (0 = no thread)
+	replyToMessageID  int           // Telegram message to reply to on initial send (0 = no reply)
+	messageID         int           // 0 = not yet created (message transport only)
+	lastText          string        // last sent text (for dedup)
+	throttle          time.Duration // min delay between edits
+	lastEdit          time.Time
+	mu                sync.Mutex
+	stopped           bool
+	pending           string // pending text to send (buffered during throttle)
+	draftID           int    // sendMessageDraft draft_id (0 = message transport)
+	useDraft          bool   // true = draft transport, false = message transport
+	draftFailed       bool   // true = draft API rejected permanently, using message transport
 	sendMayHaveLanded bool   // true = initial sendMessage was attempted and may have landed (even if timed out)
 }
 
 // NewDraftStream creates a new streaming preview manager.
 // When useDraft is true, the stream will attempt to use sendMessageDraft (Bot API 9.3+)
 // and automatically fall back to sendMessage+editMessageText if the API rejects it.
-func NewDraftStream(bot *telego.Bot, chatID int64, throttleMs int, messageThreadID int, useDraft bool) *DraftStream {
+func NewDraftStream(bot *telego.Bot, chatID int64, throttleMs int, messageThreadID, replyToMessageID int, useDraft bool) *DraftStream {
 	throttle := defaultStreamThrottle
 	if throttleMs > 0 {
 		throttle = time.Duration(throttleMs) * time.Millisecond
@@ -106,12 +107,13 @@ func NewDraftStream(bot *telego.Bot, chatID int64, throttleMs int, messageThread
 		draftID = allocateDraftID()
 	}
 	return &DraftStream{
-		bot:             bot,
-		chatID:          chatID,
-		messageThreadID: messageThreadID,
-		throttle:        throttle,
-		useDraft:        useDraft,
-		draftID:         draftID,
+		bot:              bot,
+		chatID:           chatID,
+		messageThreadID:  messageThreadID,
+		replyToMessageID: replyToMessageID,
+		throttle:         throttle,
+		useDraft:         useDraft,
+		draftID:          draftID,
 	}
 }
 
@@ -202,6 +204,9 @@ func (ds *DraftStream) flush(ctx context.Context) error {
 		}
 		if sendThreadID := resolveThreadIDForSend(ds.messageThreadID); sendThreadID > 0 {
 			params.MessageThreadID = sendThreadID
+		}
+		if ds.replyToMessageID > 0 {
+			params.ReplyParameters = &telego.ReplyParameters{MessageID: ds.replyToMessageID, AllowSendingWithoutReply: true}
 		}
 		ds.sendMayHaveLanded = true
 		msg, err := ds.bot.SendMessage(ctx, params)
@@ -300,6 +305,10 @@ func (c *Channel) CreateStream(ctx context.Context, chatID string, firstStream b
 	if v, ok := c.threadIDs.Load(chatID); ok {
 		threadID = v.(int)
 	}
+	replyToMessageID := 0
+	if v, ok := c.replyTargetIDs.Load(chatID); ok {
+		replyToMessageID = v.(int)
+	}
 
 	isDM := id > 0
 
@@ -308,7 +317,7 @@ func (c *Channel) CreateStream(ctx context.Context, chatID string, firstStream b
 	// reasoning lane — draft messages are ephemeral and would disappear
 	// when the answer stream starts.
 	useDraft := isDM && !firstStream && c.draftTransportEnabled()
-	ds := NewDraftStream(c.bot, id, 0, threadID, useDraft)
+	ds := NewDraftStream(c.bot, id, 0, threadID, replyToMessageID, useDraft)
 
 	// No placeholder seeding — DraftStream creates its own message on first flush().
 	// This avoids "reply to deleted/non-existent message" artifacts.
@@ -333,6 +342,7 @@ func (c *Channel) FinalizeStream(ctx context.Context, chatID string, stream chan
 		c.placeholders.Store(chatID, -1)
 		slog.Warn("stream: initial send landed but ID unknown. Suppressing fallback message to avoid duplicate.", "chat_id", chatID)
 	}
+	c.replyTargetIDs.Delete(chatID)
 
 	// Capture draft ID for clearing after the final Send()
 	if ds, ok := stream.(*DraftStream); ok && ds.UsedDraftTransport() {

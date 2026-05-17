@@ -578,15 +578,18 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 	// user sees typing indicator → first content appears directly.
 
 	metadata := map[string]string{
-		"message_id": fmt.Sprintf("%d", message.MessageID),
-		"user_id":    fmt.Sprintf("%d", user.ID),
+		"message_id":       fmt.Sprintf("%d", message.MessageID),
+		"user_id":          fmt.Sprintf("%d", user.ID),
 		tools.MetaUsername: user.Username,
-		"first_name": user.FirstName,
-		"is_group":   fmt.Sprintf("%t", isGroup),
-		"local_key":  localKey,
+		"first_name":       user.FirstName,
+		"is_group":         fmt.Sprintf("%t", isGroup),
+		"local_key":        localKey,
 	}
 	if message.ReplyToMessage != nil {
 		metadata["origin_reply_to_message_id"] = fmt.Sprintf("%d", message.ReplyToMessage.MessageID)
+		if c.Name() == "smartca-care-bot" {
+			c.replyTargetIDs.Store(localKey, message.ReplyToMessage.MessageID)
+		}
 	}
 	if message.Chat.Title != "" {
 		metadata[tools.MetaChatTitle] = message.Chat.Title

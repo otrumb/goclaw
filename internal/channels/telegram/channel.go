@@ -28,7 +28,7 @@ type Channel struct {
 	config            config.TelegramConfig
 	httpClient        *http.Client
 	transport         *http.Transport
-	ipv4Once          sync.Once // guards enableIPv4Only to prevent data race
+	ipv4Once          sync.Once                   // guards enableIPv4Only to prevent data race
 	agentStore        store.AgentStore            // for agent key lookup (nil if not configured)
 	configPermStore   store.ConfigPermissionStore // for group file writer management (nil if not configured)
 	teamStore         store.TeamStore             // for /tasks, /task_detail commands (nil if not configured)
@@ -38,16 +38,17 @@ type Channel struct {
 	typingCtrls       sync.Map                    // localKey string → *typing.Controller
 	reactions         sync.Map                    // localKey string → *StatusReactionController
 	threadIDs         sync.Map                    // localKey string → messageThreadID int (for forum topic routing)
-	mentionMode       string             // "strict" (default) or "yield"
-	botDisplayName    string             // bot's first_name from GetMe (e.g. "ViệtBot"); captured once at Start
-	pollCancel        context.CancelFunc // cancels the long polling context
-	pollDone          chan struct{}      // closed when polling goroutine exits
-	handlerWg         sync.WaitGroup     // tracks in-flight handler goroutines for graceful shutdown
-	handlerSem        chan struct{}      // bounded semaphore for concurrent handler goroutines
-	pendingDraftID    sync.Map           // localKey string → int (draftID)
-	audioMgr          *audio.Manager    // unified STT via audio.Manager (nil = no STT)
-	writerHealMu      sync.Mutex         // guards writerHealLastTry for /writers self-heal
-	writerHealLastTry map[string]time.Time // key "chatID|userID" → last attempt timestamp
+	replyTargetIDs    sync.Map                    // localKey string → reply target messageID int for stream first send
+	mentionMode       string                      // "strict" (default) or "yield"
+	botDisplayName    string                      // bot's first_name from GetMe (e.g. "ViệtBot"); captured once at Start
+	pollCancel        context.CancelFunc          // cancels the long polling context
+	pollDone          chan struct{}               // closed when polling goroutine exits
+	handlerWg         sync.WaitGroup              // tracks in-flight handler goroutines for graceful shutdown
+	handlerSem        chan struct{}               // bounded semaphore for concurrent handler goroutines
+	pendingDraftID    sync.Map                    // localKey string → int (draftID)
+	audioMgr          *audio.Manager              // unified STT via audio.Manager (nil = no STT)
+	writerHealMu      sync.Mutex                  // guards writerHealLastTry for /writers self-heal
+	writerHealLastTry map[string]time.Time        // key "chatID|userID" → last attempt timestamp
 	// pairingService, approvedGroups, pairingDebounce, groupHistory, historyLimit, requireMention
 	// are inherited from channels.BaseChannel.
 }

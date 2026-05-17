@@ -217,7 +217,9 @@ func processNormalMessage(
 	// so block.reply handler can use it for routing intermediate messages.
 	outMeta := channels.CopyFinalRoutingMeta(msg.Metadata)
 	if isGroup {
-		if mid := msg.Metadata["message_id"]; mid != "" {
+		if msg.Channel == "smartca-care-bot" && msg.Metadata["origin_reply_to_message_id"] != "" {
+			outMeta["reply_to_message_id"] = msg.Metadata["origin_reply_to_message_id"]
+		} else if mid := msg.Metadata["message_id"]; mid != "" {
 			outMeta["reply_to_message_id"] = mid
 		}
 	}
