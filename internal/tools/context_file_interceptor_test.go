@@ -66,7 +66,7 @@ func (s *stubAgentStore) GetByIDs(_ context.Context, _ []uuid.UUID) ([]store.Age
 	return nil, nil
 }
 func (s *stubAgentStore) GetDefault(_ context.Context) (*store.AgentData, error)        { return nil, nil }
-func (s *stubAgentStore) ResetStuckSummoning(_ context.Context) (int64, error)           { return 0, nil }
+func (s *stubAgentStore) ResetStuckSummoning(_ context.Context) (int64, error)          { return 0, nil }
 func (s *stubAgentStore) Update(_ context.Context, _ uuid.UUID, _ map[string]any) error { return nil }
 func (s *stubAgentStore) Delete(_ context.Context, _ uuid.UUID) error                   { return nil }
 func (s *stubAgentStore) List(_ context.Context, _ string) ([]store.AgentData, error) {
@@ -104,6 +104,7 @@ func (s *stubAgentStore) EnsureUserProfile(_ context.Context, _ uuid.UUID, _ str
 func (s *stubAgentStore) PropagateContextFile(_ context.Context, _ uuid.UUID, _ string) (int, error) {
 	return 0, nil
 }
+
 // ---- Tests ----
 
 // TestInterceptor_CacheHit verifies that a second read does NOT call GetAgentContextFiles again.
@@ -345,6 +346,31 @@ func TestInterceptor_BlocksCapabilitiesWithoutSelfEvolve(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "predefined configuration") {
 		t.Errorf("expected predefined-config error, got: %v", err)
+	}
+}
+
+func TestInterceptor_AllowsSmartCARulesWriteForSmartCACare(t *testing.T) {
+	agentID := uuid.New()
+	as := &stubAgentStore{}
+	intc := NewContextFileInterceptor(as, "/workspace",
+		cache.NewInMemoryCache[[]store.AgentContextFileData](),
+		cache.NewInMemoryCache[[]store.AgentContextFileData](),
+	)
+
+	ctx := store.WithAgentID(context.Background(), agentID)
+	ctx = store.WithAgentType(ctx, store.AgentTypePredefined)
+	ctx = store.WithUserID(ctx, "group:smartca")
+	ctx = WithToolAgentKey(ctx, "smartca-care")
+
+	handled, err := intc.WriteFile(ctx, "SMARTCA_RULES.md", "# SmartCA Rules")
+	if err != nil {
+		t.Fatalf("expected SMARTCA_RULES.md write to succeed for smartca-care, got error: %v", err)
+	}
+	if !handled {
+		t.Fatal("expected SMARTCA_RULES.md to be handled as context file")
+	}
+	if n := as.setAgentCallN.Load(); n != 1 {
+		t.Errorf("expected 1 SetAgentContextFile call, got %d", n)
 	}
 }
 

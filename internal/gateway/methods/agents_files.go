@@ -20,6 +20,7 @@ var allowedAgentFiles = []string{
 	bootstrap.UserFile, bootstrap.UserPredefinedFile, bootstrap.CapabilitiesFile,
 	bootstrap.BootstrapFile, bootstrap.MemoryJSONFile,
 	bootstrap.HeartbeatFile,
+	"SMARTCA_RULES.md",
 }
 
 // --- agents.files.list ---
