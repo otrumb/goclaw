@@ -128,6 +128,9 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	if req.MessageThreadID != "" {
 		ctx = tools.WithToolMessageThreadID(ctx, req.MessageThreadID)
 	}
+	if req.Message != "" {
+		ctx = tools.WithToolMessage(ctx, req.Message)
+	}
 
 	runStart := time.Now().UTC()
 

@@ -41,3 +41,15 @@ func TestBuildContextIsolatesStrongToolIntent(t *testing.T) {
 		t.Fatalf("expected current message only, got: %s", out)
 	}
 }
+
+func TestBuildContextSmartCACancelIntentDoesNotIncludeUnrelatedUIDHistory(t *testing.T) {
+	ph := NewPendingHistory()
+	ph.Record("group", HistoryEntry{Sender: "u", Body: "uid: 004191004004 ktra ton don", Timestamp: time.Now()}, 15)
+	out := ph.BuildContext("group", "[From: Dai ka]\nho tro huy don hang Doi thiet bi CCCD: 036076024086", 15)
+	if strings.Contains(out, "004191004004") {
+		t.Fatalf("expected unrelated UID history to be excluded, got: %s", out)
+	}
+	if out != "[From: Dai ka]\nho tro huy don hang Doi thiet bi CCCD: 036076024086" {
+		t.Fatalf("expected current message only, got: %s", out)
+	}
+}

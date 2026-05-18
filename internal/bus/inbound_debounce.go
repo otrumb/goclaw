@@ -129,7 +129,13 @@ func (d *InboundDebouncer) flushKey(key string) {
 
 // debounceKey builds the buffer key: channel:chatID:senderID.
 func debounceKey(msg InboundMessage) string {
-	return msg.Channel + ":" + msg.ChatID + ":" + msg.SenderID
+	key := msg.Channel + ":" + msg.ChatID + ":" + msg.SenderID
+	if msg.Metadata != nil {
+		if replyID := msg.Metadata["origin_reply_to_message_id"]; replyID != "" {
+			key += ":reply:" + replyID
+		}
+	}
+	return key
 }
 
 // mergeInboundMessages combines multiple messages into one.

@@ -34,6 +34,7 @@ const (
 	ctxAgentKey    toolContextKey = "tool_agent_key"
 	ctxSessionKey  toolContextKey = "tool_session_key" // origin session key for announce routing
 	ctxRunKind     toolContextKey = "tool_run_kind"    // "notification", "announce", "delegation"
+	ctxMessage     toolContextKey = "tool_message"     // original current user message for intent guards
 )
 
 // Well-known channel names used for routing and access control.
@@ -116,6 +117,15 @@ func WithToolMessageThreadID(ctx context.Context, threadID string) context.Conte
 
 func ToolMessageThreadIDFromCtx(ctx context.Context) string {
 	v, _ := ctx.Value(ctxThreadID).(string)
+	return v
+}
+
+func WithToolMessage(ctx context.Context, message string) context.Context {
+	return context.WithValue(ctx, ctxMessage, message)
+}
+
+func ToolMessageFromCtx(ctx context.Context) string {
+	v, _ := ctx.Value(ctxMessage).(string)
 	return v
 }
 

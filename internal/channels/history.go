@@ -292,7 +292,7 @@ func NormalizeGroupHistoryLimit(limit int) int {
 func isolatedContextIntent(message string) bool {
 	m := strings.ToLower(message)
 	checks := []string{
-		"smartca_order_scan", "hủy đơn", "huỷ đơn", "xóa đơn", "xoá đơn", "đổi thiết bị",
+		"smartca_order_scan", "hủy đơn", "huỷ đơn", "huy don", "xóa đơn", "xoá đơn", "xoa don", "đổi thiết bị", "doi thiet bi",
 		"maps.app.goo.gl", "google.com/maps", "google maps",
 		"tạo ảnh", "tao anh", "create image", "poster", "banner quảng cáo",
 		"nhắc tôi", "nhắc tui", "remind me", "hẹn giờ",
@@ -330,8 +330,8 @@ func filterEntriesForCurrentIntent(entries []HistoryEntry, currentMessage string
 func intentTerms(message string) []string {
 	m := strings.ToLower(message)
 	switch {
-	case strings.Contains(m, "hủy đơn") || strings.Contains(m, "huỷ đơn") || strings.Contains(m, "xóa đơn") || strings.Contains(m, "xoá đơn") || strings.Contains(m, "đổi thiết bị"):
-		return []string{"hủy", "huỷ", "xóa", "xoá", "đổi thiết bị", "uid", "cccd", "mã số thuế"}
+	case strings.Contains(m, "hủy đơn") || strings.Contains(m, "huỷ đơn") || strings.Contains(m, "huy don") || strings.Contains(m, "xóa đơn") || strings.Contains(m, "xoá đơn") || strings.Contains(m, "xoa don") || strings.Contains(m, "đổi thiết bị") || strings.Contains(m, "doi thiet bi"):
+		return []string{"hủy", "huỷ", "huy", "xóa", "xoá", "xoa", "đổi thiết bị", "doi thiet bi"}
 	case strings.Contains(m, "maps") || strings.Contains(m, "google maps"):
 		return []string{"maps", "địa chỉ", "quán", "nhà hàng", "place"}
 	case strings.Contains(m, "tạo ảnh") || strings.Contains(m, "tao anh") || strings.Contains(m, "create image") || strings.Contains(m, "poster") || strings.Contains(m, "banner"):
