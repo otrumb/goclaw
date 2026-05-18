@@ -109,6 +109,17 @@ func (l *Loop) processToolResult(
 	if result.Deliverable != "" {
 		rs.deliverables = append(rs.deliverables, result.Deliverable)
 	}
+	if result.ForUser != "" && !result.IsError {
+		rs.finalContent = result.ForUser
+		rs.loopKilled = true
+		toolMsg = providers.Message{
+			Role:       "tool",
+			Content:    result.ForLLM,
+			ToolCallID: tc.ID,
+			IsError:    result.IsError,
+		}
+		return toolMsg, nil, toolResultBreak
+	}
 
 	toolMsg = providers.Message{
 		Role:       "tool",
