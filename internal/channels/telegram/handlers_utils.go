@@ -8,6 +8,12 @@ import (
 	"github.com/mymmrac/telego"
 )
 
+var smartCAInlineIDRe = regexp.MustCompile(`(^|\D)\d{9,15}(\D|$)`)
+
+func hasSmartCAInlineID(text string) bool {
+	return smartCAInlineIDRe.FindString(text) != ""
+}
+
 // buildSelfIdentityPrompt returns a short system-prompt snippet telling the LLM
 // which Telegram handle represents itself, so it does not confuse its own
 // @mention for a different bot — especially useful in multi-bot groups where

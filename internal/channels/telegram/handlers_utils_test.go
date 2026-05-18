@@ -377,6 +377,18 @@ func TestIsServiceMessage_WithLocation(t *testing.T) {
 	}
 }
 
+func TestHasSmartCAInlineID(t *testing.T) {
+	if !hasSmartCAInlineID("UID031303011816 khách hàng đổi thiết bị") {
+		t.Fatal("expected UID without separator after label to be detected")
+	}
+	if !hasSmartCAInlineID("CCCD: 040178003372") {
+		t.Fatal("expected CCCD to be detected")
+	}
+	if hasSmartCAInlineID("check tồn") {
+		t.Fatal("expected text without numeric ID not to match")
+	}
+}
+
 func TestIsServiceMessage_WithPoll(t *testing.T) {
 	msg := &telego.Message{Poll: &telego.Poll{ID: "p1"}}
 	if isServiceMessage(msg) {

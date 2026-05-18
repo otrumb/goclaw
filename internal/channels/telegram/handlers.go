@@ -512,7 +512,9 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 		annotated := fmt.Sprintf("[From: %s]\n%s", senderLabel, content)
 		if c.HistoryLimit() > 0 {
 			// Resolve deferred media from history entries (lazy download).
-			if histRefs := c.GroupHistory().CollectMediaRefs(localKey); len(histRefs) > 0 {
+			// SmartCA requests with an explicit UID/MST/CCCD in current/replied text should not
+			// read unrelated recent group images; OCR can otherwise override the intended ID.
+			if histRefs := c.GroupHistory().CollectMediaRefs(localKey); len(histRefs) > 0 && !(c.Name() == "smartca-care-bot" && hasSmartCAInlineID(content)) {
 				histMedia, histErrors := c.resolveMediaRefs(ctx, histRefs)
 				for _, m := range histMedia {
 					mediaFiles = append(mediaFiles, bus.MediaFile{
