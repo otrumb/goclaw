@@ -8,7 +8,7 @@ import (
 	"github.com/mymmrac/telego"
 )
 
-var smartCAInlineIDRe = regexp.MustCompile(`(^|\D)\d{9,15}(\D|$)`)
+var smartCAInlineIDRe = regexp.MustCompile(`\d{9,15}`)
 
 func hasSmartCAInlineID(text string) bool {
 	return smartCAInlineIDRe.FindString(text) != ""

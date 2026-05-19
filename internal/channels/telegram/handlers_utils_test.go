@@ -381,6 +381,9 @@ func TestHasSmartCAInlineID(t *testing.T) {
 	if !hasSmartCAInlineID("UID031303011816 khách hàng đổi thiết bị") {
 		t.Fatal("expected UID without separator after label to be detected")
 	}
+	if !hasSmartCAInlineID("SIDNDH036173004546 PIDLDG034173011604") {
+		t.Fatal("expected prefixed identifiers to be detected")
+	}
 	if !hasSmartCAInlineID("CCCD: 040178003372") {
 		t.Fatal("expected CCCD to be detected")
 	}
