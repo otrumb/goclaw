@@ -8,10 +8,39 @@ import (
 	"github.com/mymmrac/telego"
 )
 
-var smartCAInlineIDRe = regexp.MustCompile(`\d{9,15}`)
+var smartCAInlineIDTokenRe = regexp.MustCompile(`[A-Za-z0-9]+`)
+var smartCAInlineIDSuffixRe = regexp.MustCompile(`\d{9,15}$`)
 
 func hasSmartCAInlineID(text string) bool {
-	return smartCAInlineIDRe.FindString(text) != ""
+	for _, token := range smartCAInlineIDTokenRe.FindAllString(text, -1) {
+		if isSmartCAInlineNumericID(token) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSmartCAInlineNumericID(token string) bool {
+	if len(token) >= 9 && len(token) <= 15 {
+		allDigits := true
+		for _, r := range token {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			return true
+		}
+	}
+	hasLetter := false
+	for _, r := range token {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+			hasLetter = true
+			break
+		}
+	}
+	return hasLetter && smartCAInlineIDSuffixRe.FindString(token) != ""
 }
 
 // buildSelfIdentityPrompt returns a short system-prompt snippet telling the LLM

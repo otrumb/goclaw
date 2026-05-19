@@ -384,6 +384,9 @@ func TestHasSmartCAInlineID(t *testing.T) {
 	if !hasSmartCAInlineID("SIDNDH036173004546 PIDLDG034173011604") {
 		t.Fatal("expected prefixed identifiers to be detected")
 	}
+	if hasSmartCAInlineID("Certificate Serial Number: 540101011e0297dbd5bc29bf88e5d23") {
+		t.Fatal("expected certificate serial hex not to be treated as UID")
+	}
 	if !hasSmartCAInlineID("CCCD: 040178003372") {
 		t.Fatal("expected CCCD to be detected")
 	}
