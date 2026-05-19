@@ -49,6 +49,7 @@ func (t *GoogleMapsPlaceTool) Execute(ctx context.Context, args map[string]any) 
 	if query == "" || query == "<nil>" {
 		return ErrorResult("query is required")
 	}
+	query = normalizeGoogleMapsQuery(query)
 	resolved := mapsResolvedQuery{Query: query}
 	if mapsQuery, err := t.resolveGoogleMapsQuery(ctx, query); err == nil && mapsQuery.Query != "" {
 		resolved = mapsQuery
@@ -58,39 +59,58 @@ func (t *GoogleMapsPlaceTool) Execute(ctx context.Context, args map[string]any) 
 		maxResults = min(v, 10)
 	}
 
+	parsed, usedQuery, errResult := t.searchGoogleMaps(ctx, apiKey, resolved.Query, resolved.LL)
+	if errResult != nil {
+		return errResult
+	}
+	if len(parsed.LocalResults) == 0 {
+		for _, fallback := range googleMapsFallbackQueries(resolved.Query) {
+			parsed, usedQuery, errResult = t.searchGoogleMaps(ctx, apiKey, fallback, resolved.LL)
+			if errResult != nil {
+				return errResult
+			}
+			if len(parsed.LocalResults) > 0 {
+				break
+			}
+		}
+	}
+	return NewResult(formatMapsResults(query, usedQuery, parsed.LocalResults, maxResults))
+}
+
+func (t *GoogleMapsPlaceTool) searchGoogleMaps(ctx context.Context, apiKey, query, ll string) (serpMapsResponse, string, *Result) {
 	values := url.Values{}
 	values.Set("engine", "google_maps")
-	values.Set("q", resolved.Query)
-	if resolved.LL != "" {
-		values.Set("ll", resolved.LL)
+	values.Set("q", query)
+	if ll != "" {
+		values.Set("ll", ll)
 	}
 	values.Set("hl", "vi")
 	values.Set("gl", "vn")
 	values.Set("api_key", apiKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serpAPIGoogleFlightsEndpoint+"?"+values.Encode(), nil)
 	if err != nil {
-		return ErrorResult(fmt.Sprintf("create Google Maps request: %v", err))
+		return serpMapsResponse{}, query, ErrorResult(fmt.Sprintf("create Google Maps request: %v", err))
 	}
 	res, err := t.client.Do(req)
 	if err != nil {
-		return ErrorResult(fmt.Sprintf("Google Maps API request failed: %v", err))
+		return serpMapsResponse{}, query, ErrorResult(fmt.Sprintf("Google Maps API request failed: %v", err))
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
 	if err != nil {
-		return ErrorResult(fmt.Sprintf("read Google Maps response: %v", err))
+		return serpMapsResponse{}, query, ErrorResult(fmt.Sprintf("read Google Maps response: %v", err))
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return ErrorResult(fmt.Sprintf("Google Maps API returned HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(body))))
+		return serpMapsResponse{}, query, ErrorResult(fmt.Sprintf("Google Maps API returned HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(body))))
 	}
 	var parsed serpMapsResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return ErrorResult(fmt.Sprintf("parse Google Maps response: %v", err))
+		return serpMapsResponse{}, query, ErrorResult(fmt.Sprintf("parse Google Maps response: %v", err))
 	}
-	if parsed.Error != "" {
-		return ErrorResult("Google Maps API error: " + parsed.Error)
+	if parsed.Error != "" && !strings.Contains(strings.ToLower(parsed.Error), "hasn't returned any results") {
+		return serpMapsResponse{}, query, ErrorResult("Google Maps API error: " + parsed.Error)
 	}
-	return NewResult(formatMapsResults(query, resolved.Query, parsed.LocalResults, maxResults))
+	return parsed, query, nil
 }
 
 type mapsResolvedQuery struct {
@@ -147,14 +167,73 @@ func googleMapsQueryFromURL(raw string) (mapsResolvedQuery, error) {
 	return resolved, nil
 }
 
-var googleMapsAtCoordRe = regexp.MustCompile(`@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(\d+(?:\.\d+)?z)`)
+var googleMapsAtCoordRe = regexp.MustCompile(`@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(\d+(?:\.\d+)?)([zm])`)
 
 func googleMapsLLFromPath(path string) string {
 	m := googleMapsAtCoordRe.FindStringSubmatch(path)
-	if len(m) != 4 {
+	if len(m) != 5 {
 		return ""
 	}
-	return fmt.Sprintf("@%s,%s,%s", m[1], m[2], m[3])
+	zoom := m[3] + m[4]
+	if m[4] == "m" {
+		zoom = "18z"
+	}
+	return fmt.Sprintf("@%s,%s,%s", m[1], m[2], zoom)
+}
+
+func normalizeGoogleMapsQuery(query string) string {
+	query = strings.TrimSpace(query)
+	query = strings.ReplaceAll(query, "\"", "")
+	query = strings.ReplaceAll(query, "'", "")
+	return strings.Join(strings.Fields(query), " ")
+}
+
+func googleMapsFallbackQueries(query string) []string {
+	query = normalizeGoogleMapsQuery(query)
+	if query == "" {
+		return nil
+	}
+	seen := map[string]bool{strings.ToLower(query): true}
+	out := []string{}
+	add := func(q string) {
+		q = strings.Join(strings.Fields(strings.TrimSpace(q)), " ")
+		key := strings.ToLower(q)
+		if q == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, q)
+	}
+	if strings.Contains(query, " - ") {
+		parts := strings.SplitN(query, " - ", 2)
+		name := strings.TrimSpace(parts[0])
+		rest := strings.TrimSpace(parts[1])
+		city := googleMapsKnownCity(rest)
+		if city != "" {
+			add(name + " " + city)
+		}
+		add(name)
+		add(strings.ReplaceAll(query, " - ", " "))
+	}
+	words := strings.Fields(query)
+	if len(words) > 2 {
+		city := googleMapsKnownCity(query)
+		if city != "" {
+			add(words[0] + " " + words[1] + " " + city)
+		}
+		add(words[0] + " " + words[1])
+	}
+	return out
+}
+
+func googleMapsKnownCity(text string) string {
+	lower := strings.ToLower(text)
+	for _, city := range []string{"Đà Nẵng", "Da Nang", "Hà Nội", "Ha Noi", "TP Hồ Chí Minh", "Ho Chi Minh", "Huế", "Hue"} {
+		if strings.Contains(lower, strings.ToLower(city)) {
+			return city
+		}
+	}
+	return ""
 }
 
 type serpMapsResponse struct {
