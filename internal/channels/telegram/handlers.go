@@ -394,7 +394,7 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 	// Deferred until after mention + pairing gates to avoid downloading
 	// media for messages that only get recorded in pending history.
 	mediaList, mediaErrors := c.resolveMedia(ctx, message)
-	if message.ReplyToMessage != nil {
+	if message.ReplyToMessage != nil && !shouldSkipSmartCAReplyMedia(c.Name(), content) {
 		replyMedia, replyErrors := c.resolveMedia(ctx, message.ReplyToMessage)
 		if len(replyMedia) > 0 {
 			// Tag reply media so LLM knows which images came from the replied-to message.

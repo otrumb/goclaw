@@ -20,6 +20,10 @@ func hasSmartCAInlineID(text string) bool {
 	return false
 }
 
+func shouldSkipSmartCAReplyMedia(channelName, content string) bool {
+	return channelName == "smartca-care-bot" && hasSmartCAInlineID(content)
+}
+
 func isSmartCAInlineNumericID(token string) bool {
 	if len(token) >= 9 && len(token) <= 15 {
 		allDigits := true

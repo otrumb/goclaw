@@ -395,6 +395,19 @@ func TestHasSmartCAInlineID(t *testing.T) {
 	}
 }
 
+func TestShouldSkipSmartCAReplyMedia(t *testing.T) {
+	content := "check tồn\n\n[Replying to Nguyễn Quang Huy]\nUID: 020190012537 ; Hoàng Thị Đều\n[/Replying]"
+	if !shouldSkipSmartCAReplyMedia("smartca-care-bot", content) {
+		t.Fatal("expected smartca-care reply media to be skipped when text already has UID")
+	}
+	if shouldSkipSmartCAReplyMedia("otrumai-bot", content) {
+		t.Fatal("expected non-SmartCA bot not to skip reply media")
+	}
+	if shouldSkipSmartCAReplyMedia("smartca-care-bot", "check tồn") {
+		t.Fatal("expected SmartCA bot to keep reply media when no UID is present in text")
+	}
+}
+
 func TestIsServiceMessage_WithPoll(t *testing.T) {
 	msg := &telego.Message{Poll: &telego.Poll{ID: "p1"}}
 	if isServiceMessage(msg) {
